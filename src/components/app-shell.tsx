@@ -3,6 +3,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  Calculator,
   History,
   LineChart,
   Settings,
@@ -12,6 +13,7 @@ import type { ReactNode } from "react";
 const NAV = [
   { to: "/" as const, label: "Live", icon: Activity },
   { to: "/signal" as const, label: "Signal", icon: LineChart },
+  { to: "/risk-rechner" as const, label: "Risk", icon: Calculator },
   { to: "/journal" as const, label: "Journal", icon: BookOpen },
   { to: "/analytics" as const, label: "Analyse", icon: BarChart3 },
   { to: "/backtest" as const, label: "Backtest", icon: History },
