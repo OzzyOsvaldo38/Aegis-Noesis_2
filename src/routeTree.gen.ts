@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignalRouteImport } from './routes/signal'
+import { Route as RiskRechnerRouteImport } from './routes/risk-rechner'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as EinstellungenRouteImport } from './routes/einstellungen'
 import { Route as BacktestRouteImport } from './routes/backtest'
@@ -19,6 +20,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const SignalRoute = SignalRouteImport.update({
   id: '/signal',
   path: '/signal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RiskRechnerRoute = RiskRechnerRouteImport.update({
+  id: '/risk-rechner',
+  path: '/risk-rechner',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JournalRoute = JournalRouteImport.update({
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/backtest': typeof BacktestRoute
   '/einstellungen': typeof EinstellungenRoute
   '/journal': typeof JournalRoute
+  '/risk-rechner': typeof RiskRechnerRoute
   '/signal': typeof SignalRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/backtest': typeof BacktestRoute
   '/einstellungen': typeof EinstellungenRoute
   '/journal': typeof JournalRoute
+  '/risk-rechner': typeof RiskRechnerRoute
   '/signal': typeof SignalRoute
 }
 export interface FileRoutesById {
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/backtest': typeof BacktestRoute
   '/einstellungen': typeof EinstellungenRoute
   '/journal': typeof JournalRoute
+  '/risk-rechner': typeof RiskRechnerRoute
   '/signal': typeof SignalRoute
 }
 export interface FileRouteTypes {
@@ -80,6 +89,7 @@ export interface FileRouteTypes {
     | '/backtest'
     | '/einstellungen'
     | '/journal'
+    | '/risk-rechner'
     | '/signal'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/backtest'
     | '/einstellungen'
     | '/journal'
+    | '/risk-rechner'
     | '/signal'
   id:
     | '__root__'
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/backtest'
     | '/einstellungen'
     | '/journal'
+    | '/risk-rechner'
     | '/signal'
   fileRoutesById: FileRoutesById
 }
@@ -105,6 +117,7 @@ export interface RootRouteChildren {
   BacktestRoute: typeof BacktestRoute
   EinstellungenRoute: typeof EinstellungenRoute
   JournalRoute: typeof JournalRoute
+  RiskRechnerRoute: typeof RiskRechnerRoute
   SignalRoute: typeof SignalRoute
 }
 
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/signal'
       fullPath: '/signal'
       preLoaderRoute: typeof SignalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/risk-rechner': {
+      id: '/risk-rechner'
+      path: '/risk-rechner'
+      fullPath: '/risk-rechner'
+      preLoaderRoute: typeof RiskRechnerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/journal': {
@@ -161,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   BacktestRoute: BacktestRoute,
   EinstellungenRoute: EinstellungenRoute,
   JournalRoute: JournalRoute,
+  RiskRechnerRoute: RiskRechnerRoute,
   SignalRoute: SignalRoute,
 }
 export const routeTree = rootRouteImport
