@@ -88,9 +88,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "BTC Futures Decision Engine" },
       { name: "description", content: "Risk-First Decision Engine für BTCUSDT Futures — Default: NO TRADE." },
       { property: "og:title", content: "BTC Futures Decision Engine" },
-      { property: "og:description", content: "Regelbasierte Risiko-Engine für BTCUSDT Futures." },
+      { property: "og:description", content: "Risk-First Decision Engine für BTCUSDT Futures — Default: NO TRADE." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "BTC Futures Decision Engine" },
+      { name: "twitter:description", content: "Risk-First Decision Engine für BTCUSDT Futures — Default: NO TRADE." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/6db11820-f45f-4903-985d-59b55f6cf0d3/id-preview-f2ac9a02--8cc540b6-7c44-4d3a-b4e3-4407d4338204.lovable.app-1782002158879.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/6db11820-f45f-4903-985d-59b55f6cf0d3/id-preview-f2ac9a02--8cc540b6-7c44-4d3a-b4e3-4407d4338204.lovable.app-1782002158879.png" },
     ],
     links: [
       {
