@@ -48,7 +48,7 @@ export function useEngine(settings: AppSettings) {
         ) {
           lastNotifiedTs.current = result.ts;
           notify(
-            `BTCUSDT ${result.direction} · Score ${result.score}`,
+            `${settings.symbol} ${result.direction} · Score ${result.score}`,
             result.trade
               ? `Entry ${result.trade.entry.toFixed(2)} · SL ${result.trade.stop.toFixed(2)} · TP ${result.trade.tp1.toFixed(2)}`
               : "Setup erkannt",
