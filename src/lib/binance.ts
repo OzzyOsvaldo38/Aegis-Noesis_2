@@ -27,7 +27,7 @@ function parseKlines(raw: unknown[]): Candle[] {
 export async function fetchKlines(
   symbol: string,
   interval: "15m" | "1h" | "4h",
-  limit = 200,
+  limit = 500,
 ): Promise<Candle[]> {
   const data = await getJSON<unknown[]>(
     `/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
@@ -68,9 +68,9 @@ export async function fetchLongShortRatio(symbol: string) {
 
 export async function fetchSnapshot(symbol: string): Promise<MarketSnapshot> {
   const [c4, c1, c15, prem, oi, ls] = await Promise.all([
-    fetchKlines(symbol, "4h", 200),
-    fetchKlines(symbol, "1h", 200),
-    fetchKlines(symbol, "15m", 200),
+    fetchKlines(symbol, "4h", 500),
+    fetchKlines(symbol, "1h", 500),
+    fetchKlines(symbol, "15m", 500),
     fetchPremiumIndex(symbol),
     fetchOpenInterestHist(symbol).catch(() => []),
     fetchLongShortRatio(symbol).catch(() => 1),
