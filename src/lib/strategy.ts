@@ -291,7 +291,7 @@ export function decide(
     scores.rsi +
     scores.oi +
     scores.funding +
-    scores.manipulation +
+    scores.liquidityRisk +
     scores.risk +
     scores.crv;
 
