@@ -27,9 +27,11 @@ import {
 } from "./indicators";
 import type {
   Candle,
+  DataHealth,
   Direction,
   EngineResult,
   LayerResult,
+  NoTradeReason,
 } from "./types";
 
 export interface StrategyConfig {
