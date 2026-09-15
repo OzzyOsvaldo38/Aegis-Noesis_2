@@ -276,7 +276,10 @@ export function decide(
         : trendDir === "SHORT" && (fundingNeutral || fundingSlightShort)
           ? 5
           : 0,
-    manipulation: Math.max(0, 10 - Math.round(manip.score / 10)),
+    // Liquidity-/volatility risk factor (0..10). Same computation as before,
+    // only renamed to the V2 vocabulary — it does NOT claim to prove
+    // market manipulation.
+    liquidityRisk: Math.max(0, 10 - Math.round(manip.score / 10)),
     risk: stopValid ? 10 : 0,
     crv: crvOk ? 5 : 0,
   };
