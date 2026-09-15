@@ -459,10 +459,18 @@ export function decide(
       stop,
       tp1,
       tp2,
-      riskAmount,
-      positionSize,
-      leverage: cfg.leverage,
-      crv,
+      risk: {
+        accountSize: cfg.accountSize,
+        riskPercent: cfg.riskPerTrade,
+        riskAmount,
+        leverage: cfg.leverage,
+        entry,
+        stop,
+        tp1,
+        tp2,
+        positionSize,
+        crv,
+      },
     };
   }
 
