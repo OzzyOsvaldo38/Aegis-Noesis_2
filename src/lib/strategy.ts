@@ -27,9 +27,11 @@ import {
 } from "./indicators";
 import type {
   Candle,
+  DataHealth,
   Direction,
   EngineResult,
   LayerResult,
+  NoTradeReason,
 } from "./types";
 
 export interface StrategyConfig {
@@ -274,7 +276,10 @@ export function decide(
         : trendDir === "SHORT" && (fundingNeutral || fundingSlightShort)
           ? 5
           : 0,
-    manipulation: Math.max(0, 10 - Math.round(manip.score / 10)),
+    // Liquidity-/volatility risk factor (0..10). Same computation as before,
+    // only renamed to the V2 vocabulary — it does NOT claim to prove
+    // market manipulation.
+    liquidityRisk: Math.max(0, 10 - Math.round(manip.score / 10)),
     risk: stopValid ? 10 : 0,
     crv: crvOk ? 5 : 0,
   };
@@ -286,7 +291,7 @@ export function decide(
     scores.rsi +
     scores.oi +
     scores.funding +
-    scores.manipulation +
+    scores.liquidityRisk +
     scores.risk +
     scores.crv;
 
@@ -340,6 +345,82 @@ export function decide(
       : "Risk-Layer fehlgeschlagen.",
   );
 
+  // ---- Structured NO-TRADE reasons (derived from the existing hard gates) ----
+  const noTradeReasons: NoTradeReason[] = [];
+  if (decision === "NO_TRADE") {
+    if (trendDir === "NONE") {
+      noTradeReasons.push({
+        code: "TREND_NOT_ALIGNED",
+        message: "4H- und 1H-Trend sind nicht ausgerichtet.",
+        blocking: true,
+      });
+    }
+    if (!structOk) {
+      noTradeReasons.push({
+        code: "STRUCTURE_NOT_CONFIRMED",
+        message: "1H-Struktur bestätigt den Trend nicht.",
+        blocking: true,
+      });
+    }
+    if (!entryOk) {
+      noTradeReasons.push({
+        code: "ENTRY_NOT_CONFIRMED",
+        message: "Kein bestätigter 15M-Entry.",
+        blocking: true,
+      });
+    }
+    if (!volOk) {
+      noTradeReasons.push({
+        code: "VOLUME_NOT_CONFIRMED",
+        message: "Volumen bestätigt den Entry nicht.",
+        blocking: true,
+      });
+    }
+    if (!(trendDir === "LONG" ? rsiOkLong : rsiOkShort)) {
+      noTradeReasons.push({
+        code: "RSI_NOT_CONFIRMED",
+        message: "RSI liegt außerhalb der gültigen Zone.",
+        blocking: true,
+      });
+    }
+    if (manipBlock) {
+      noTradeReasons.push({
+        code: "LIQUIDITY_RISK_TOO_HIGH",
+        message: `Liquiditäts-/Volatilitätsrisiko zu hoch (${manip.score}/100).`,
+        blocking: true,
+      });
+    }
+    if (!stopValid) {
+      noTradeReasons.push({
+        code: "STOP_INVALID",
+        message: "Stop nicht ATR-validiert.",
+        blocking: true,
+      });
+    }
+    if (!crvOk) {
+      noTradeReasons.push({
+        code: "CRV_TOO_LOW",
+        message: "CRV unter dem Mindestwert von 1.5.",
+        blocking: true,
+      });
+    }
+  }
+
+  // ---- Data-health placeholder ----
+  // The real validation logic lands in a later step. Until then this reports a
+  // neutral, type-compatible placeholder and never relaxes any hard gate.
+  const dataHealth: DataHealth = {
+    status: "HEALTHY",
+    checks: [
+      {
+        name: "Data-Health",
+        status: "PASS",
+        detail: "Noch nicht implementiert (Platzhalter).",
+      },
+    ],
+    checkedAt: Date.now(),
+  };
+
   const result: EngineResult = {
     ts: Date.now(),
     price,
@@ -347,9 +428,11 @@ export function decide(
     decision,
     score: totalScore,
     scores,
-    manipulationScore: manip.score,
+    liquidityRiskScore: manip.score,
+    dataHealth,
     layers,
     reasoning,
+    noTradeReasons,
     market: {
       fundingRate: ctx.fundingRate,
       openInterest: ctx.openInterest,
@@ -376,10 +459,18 @@ export function decide(
       stop,
       tp1,
       tp2,
-      riskAmount,
-      positionSize,
-      leverage: cfg.leverage,
-      crv,
+      risk: {
+        accountSize: cfg.accountSize,
+        riskPercent: cfg.riskPerTrade,
+        riskAmount,
+        leverage: cfg.leverage,
+        entry,
+        stop,
+        tp1,
+        tp2,
+        positionSize,
+        crv,
+      },
     };
   }
 
