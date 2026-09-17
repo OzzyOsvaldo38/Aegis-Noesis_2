@@ -62,9 +62,18 @@ export interface BacktestResult {
 const HOUR = 3_600_000;
 const FOUR_H = 14_400_000;
 
-/** Aggregate 15m candles into a higher timeframe by time-bucketing. */
+const FIFTEEN_M = 900_000;
+
+/**
+ * Aggregate 15m candles into a higher timeframe by time-bucketing.
+ * A bucket is only returned when ALL of its 15m constituents are present, so an
+ * incomplete (or gap-damaged) HTF candle is never treated as closed. No values
+ * are invented.
+ */
 function resample(c15: Candle[], factorMs: number): Candle[] {
+  const expectedParts = Math.round(factorMs / FIFTEEN_M);
   const map = new Map<number, Candle>();
+  const parts = new Map<number, number>();
   const order: number[] = [];
   for (const c of c15) {
     const key = Math.floor(c.openTime / factorMs) * factorMs;
@@ -79,15 +88,19 @@ function resample(c15: Candle[], factorMs: number): Candle[] {
         volume: c.volume,
         closeTime: key + factorMs - 1,
       });
+      parts.set(key, 1);
       order.push(key);
     } else {
       ex.high = Math.max(ex.high, c.high);
       ex.low = Math.min(ex.low, c.low);
       ex.close = c.close;
       ex.volume += c.volume;
+      parts.set(key, (parts.get(key) ?? 0) + 1);
     }
   }
-  return order.map((k) => map.get(k)!);
+  return order
+    .filter((k) => (parts.get(k) ?? 0) === expectedParts)
+    .map((k) => map.get(k)!);
 }
 
 interface OpenPos {
@@ -115,9 +128,13 @@ export function runBacktest(p: BacktestParams): BacktestResult {
   const slip = p.slippageBps / 10000;
   const riskAmount = (p.accountSize * p.riskPct) / 100;
 
-  const W15 = 600; // rolling window: enough warmup for EMA200
+  // Warm-up: EMA200 needs ~210 candles on EVERY timeframe the strategy reads.
+  // The binding constraint is 4H (16 x 15m per candle), so the backtest simply
+  // starts later instead of padding data.
+  const MIN_HIST = 210;
+  const W15 = 600; // rolling window: enough warmup for EMA200 on 15m
   const WHTF = 400;
-  const START = 260; // ensure EMA200 has history
+  const START = MIN_HIST * Math.round(FOUR_H / FIFTEEN_M); // ~3360 15m bars
 
   let p1 = -1; // pointer: last CLOSED 1h candle index <= current 15m closeTime
   let p4 = -1;
@@ -211,7 +228,13 @@ export function runBacktest(p: BacktestParams): BacktestResult {
       const w15 = c.slice(Math.max(0, i - W15 + 1), i + 1);
       const w1 = c1h.slice(Math.max(0, p1 - WHTF + 1), p1 + 1);
       const w4 = c4h.slice(Math.max(0, p4 - WHTF + 1), p4 + 1);
-      if (w15.length >= 210 && w1.length >= 60 && w4.length >= 60) {
+      // Skip any step whose visible history is insufficient — no trade, no
+      // substitute data. (Full data-health auditing lives in engine.ts.)
+      if (
+        w15.length >= MIN_HIST &&
+        w1.length >= MIN_HIST &&
+        w4.length >= MIN_HIST
+      ) {
         const ctx: StrategyContext = {
           candles15m: w15,
           candles1h: w1,
@@ -236,7 +259,7 @@ export function runBacktest(p: BacktestParams): BacktestResult {
             stop: t.stop,
             tp1: t.tp1,
             tp2: t.tp2,
-            sizeCoins: t.positionSize,
+            sizeCoins: t.risk.positionSize,
             remaining: 1,
             tookTP1: false,
             openTime: bar.openTime,
@@ -249,6 +272,20 @@ export function runBacktest(p: BacktestParams): BacktestResult {
     }
 
     equityCurve.push({ time: bar.closeTime, value: equity });
+  }
+
+  // ---- Open position at the end of the data ----
+  // Settle the remainder at the last available close so the statistics can't be
+  // flattered by an unresolved position. Labelled by the worst-case realised
+  // path (TP1 already banked, otherwise STOP).
+  const lastBar = last(c);
+  if (open && open.remaining > 0 && lastBar) {
+    const pos = open;
+    settle(pos, pos.remaining, lastBar.close, lastBar.closeTime);
+    pos.remaining = 0;
+    finalizeTrade(pos, pos.tookTP1 ? "TP1" : "STOP", lastBar.closeTime);
+    open = null;
+    equityCurve.push({ time: lastBar.closeTime, value: equity });
   }
 
   // ---------- Stats ----------
