@@ -13,7 +13,11 @@ export const Route = createFileRoute("/signal")({
   head: () => ({
     meta: [
       { title: "Aktuelles Signal — BTC Engine" },
-      { name: "description", content: "Detailansicht des aktuellen Signals: Score, Layer, Trade-Plan." },
+      {
+        name: "description",
+        content:
+          "Detailansicht des aktuellen Signals: Score, Layer, Trade-Plan.",
+      },
     ],
   }),
   component: SignalPage,
@@ -32,6 +36,7 @@ function Inner({ settings }: { settings: AppSettings }) {
 
   const saveSignal = () => {
     if (!result?.trade) return;
+
     const sig: Signal = {
       id: uid(),
       timestamp: result.ts,
@@ -42,17 +47,19 @@ function Inner({ settings }: { settings: AppSettings }) {
       tp1: result.trade.tp1,
       tp2: result.trade.tp2,
       signal_score: result.score,
-      manipulation_score: result.manipulationScore,
-      trend_status: result.layers.find((l) => l.name === "Trend")?.detail ?? "",
+      liquidity_risk_score: result.liquidityRiskScore,
+      trend_status:
+        result.layers.find((l) => l.name === "Trend")?.detail ?? "",
       structure_status:
         result.layers.find((l) => l.name === "Struktur")?.detail ?? "",
       funding_rate: result.market.fundingRate,
       open_interest: result.market.openInterest,
-      risk_amount: result.trade.riskAmount,
-      position_size: result.trade.positionSize,
-      leverage: user.default_leverage,
+      risk_amount: result.trade.risk.riskAmount,
+      position_size: result.trade.risk.positionSize,
+      leverage: result.trade.risk.leverage,
       status: "OPEN",
     };
+
     store.addSignal(sig);
     alert("Signal im Journal gespeichert.");
   };
@@ -60,7 +67,9 @@ function Inner({ settings }: { settings: AppSettings }) {
   return (
     <AppShell title="Aktuelles Signal">
       {!result ? (
-        <div className="tile p-6 text-center text-muted-foreground">Lade…</div>
+        <div className="tile p-6 text-center text-muted-foreground">
+          Lade…
+        </div>
       ) : (
         <div className="space-y-3">
           <div className="tile p-4">
@@ -82,30 +91,56 @@ function Inner({ settings }: { settings: AppSettings }) {
           {result.trade ? (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <MetricTile label="Entry" value={fmtPrice(result.trade.entry)} />
+                <MetricTile
+                  label="Entry"
+                  value={fmtPrice(result.trade.entry)}
+                />
+
                 <MetricTile
                   label="Stop Loss"
                   tone="bear"
                   value={fmtPrice(result.trade.stop)}
                 />
-                <MetricTile label="TP1 (1.5R)" tone="bull" value={fmtPrice(result.trade.tp1)} />
-                <MetricTile label="TP2 (3R)" tone="bull" value={fmtPrice(result.trade.tp2)} />
+
+                <MetricTile
+                  label="TP1 (1.5R)"
+                  tone="bull"
+                  value={fmtPrice(result.trade.tp1)}
+                />
+
+                <MetricTile
+                  label="TP2 (3R)"
+                  tone="bull"
+                  value={fmtPrice(result.trade.tp2)}
+                />
+
                 <MetricTile
                   label="Risk"
-                  value={`${fmtUSD(result.trade.riskAmount)} $`}
-                  hint={`${user.risk_per_trade}% von ${fmtUSD(user.account_size)} $`}
+                  value={`${fmtUSD(result.trade.risk.riskAmount)} $`}
+                  hint={`${user.risk_per_trade}% von ${fmtUSD(
+                    user.account_size,
+                  )} $`}
                 />
+
                 <MetricTile
                   label="Position"
-                  value={`${result.trade.positionSize.toFixed(4)} BTC`}
-                  hint={`${user.default_leverage}× Hebel`}
+                  value={`${result.trade.risk.positionSize.toFixed(4)} BTC`}
+                  hint={`${result.trade.risk.leverage}× Hebel`}
                 />
-                <MetricTile label="CRV" value={result.trade.crv.toFixed(2)} />
+
+                <MetricTile
+                  label="CRV"
+                  value={result.trade.risk.crv.toFixed(2)}
+                />
+
                 <MetricTile
                   label="Funding"
-                  value={`${(result.market.fundingRate * 100).toFixed(4)}%`}
+                  value={`${(
+                    result.market.fundingRate * 100
+                  ).toFixed(4)}%`}
                 />
               </div>
+
               <button
                 onClick={saveSignal}
                 className="w-full rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
@@ -115,7 +150,11 @@ function Inner({ settings }: { settings: AppSettings }) {
             </>
           ) : (
             <div className="tile p-4 text-sm text-muted-foreground">
-              Kein gültiges Setup. Default-Regel: <span className="text-foreground font-semibold">NO TRADE</span>.
+              Kein gültiges Setup. Default-Regel:{" "}
+              <span className="text-foreground font-semibold">
+                NO TRADE
+              </span>
+              .
             </div>
           )}
 
@@ -123,6 +162,7 @@ function Inner({ settings }: { settings: AppSettings }) {
             <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">
               Layer-Details
             </div>
+
             {result.layers.map((l) => (
               <LayerRow key={l.name} layer={l} />
             ))}
@@ -132,13 +172,16 @@ function Inner({ settings }: { settings: AppSettings }) {
             <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">
               Score-Aufschlüsselung
             </div>
+
             <div className="mt-2 grid grid-cols-2 gap-1.5">
               {Object.entries(result.scores).map(([k, v]) => (
                 <div
                   key={k}
                   className="flex items-center justify-between rounded-md bg-muted/40 px-2.5 py-1.5 text-xs"
                 >
-                  <span className="capitalize text-muted-foreground">{k}</span>
+                  <span className="capitalize text-muted-foreground">
+                    {k}
+                  </span>
                   <span className="num font-semibold">{v}</span>
                 </div>
               ))}
@@ -149,6 +192,7 @@ function Inner({ settings }: { settings: AppSettings }) {
             <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">
               Begründung
             </div>
+
             <ul className="mt-2 space-y-1.5 text-sm">
               {result.reasoning.map((r, i) => (
                 <li key={i} className="flex gap-2">
@@ -157,10 +201,11 @@ function Inner({ settings }: { settings: AppSettings }) {
                 </li>
               ))}
             </ul>
+
             <div className="mt-3 text-xs text-muted-foreground">
               OI-Änderung {fmtPct(result.market.oiChangePct)} · L/S{" "}
-              {result.market.longShortRatio.toFixed(2)} · Manipulation{" "}
-              {result.manipulationScore}/100
+              {result.market.longShortRatio.toFixed(2)} · Liquidity Risk{" "}
+              {result.liquidityRiskScore}/100
             </div>
           </div>
         </div>
