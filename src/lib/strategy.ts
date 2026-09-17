@@ -40,6 +40,14 @@ export interface StrategyConfig {
   accountSize: number;
   riskPerTrade: number;
   leverage: number;
+
+  // Quality-filter parameters.
+  // Defaults preserve the current production behavior.
+  volumeMultiplier?: number;
+  rsiLongMin?: number;
+  rsiLongMax?: number;
+  rsiShortMin?: number;
+  rsiShortMax?: number;
 }
 
 export interface StrategyContext {
@@ -289,8 +297,11 @@ export function decide(
   const volumeAverage = avgVolume(ctx.candles15m, 5);
   const lastVolume = lastCandle?.volume ?? 0;
 
+  const volumeMultiplier = cfg.volumeMultiplier ?? 1.0;
+
   const volumeOk =
-    volumeAverage > 0 && lastVolume > volumeAverage;
+    volumeAverage > 0 &&
+    lastVolume > volumeAverage * volumeMultiplier;
 
   let entryOk = false;
 

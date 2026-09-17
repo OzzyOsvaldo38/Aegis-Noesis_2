@@ -1,15 +1,3 @@
-// Client-side backtester.
-//
-// PARITY: this runs the EXACT same decision function as the live engine
-// (strategy.decide) on CLOSED candles. Higher timeframes (1H/4H) are rebuilt
-// from the 15m series by resampling, and only fully-closed HTF candles are ever
-// visible at each step (no look-ahead).
-//
-// LIMITATION (documented): Binance's public OI history doesn't reach far enough
-// back, so OI confirmation isn't reproduced here. In strategy.ts OI is a scored
-// factor (not a hard gate), so this only makes the backtest slightly more
-// conservative than live, never more optimistic.
-
 import { last } from "./indicators";
 import { decide, type StrategyContext } from "./strategy";
 import type { Candle } from "./types";
@@ -18,12 +6,18 @@ export interface BacktestParams {
   candles: Candle[];
   accountSize: number;
   riskPct: number;
-  feeBps: number; // taker fee in basis points, charged per side
-  slippageBps: number; // per side
-  fundingRateAvg: number; // 8h funding, average
-  rrTp1: number; // kept for UI compatibility (strategy uses 1.5 / 3.0 internally)
+  feeBps: number;
+  slippageBps: number;
+  fundingRateAvg: number;
+  rrTp1: number;
   rrTp2: number;
-  minScore?: number; // defaults to 80
+  minScore?: number;
+
+  volumeMultiplier?: number;
+  rsiLongMin?: number;
+  rsiLongMax?: number;
+  rsiShortMin?: number;
+  rsiShortMax?: number;
 }
 
 export interface BacktestTrade {
@@ -34,9 +28,9 @@ export interface BacktestTrade {
   stop: number;
   tp1: number;
   tp2: number;
-  exit: number; // last (final) exit price of the position
+  exit: number;
   outcome: "TP1" | "TP2" | "STOP";
-  pnl: number; // net USDT over the whole position
+  pnl: number;
   rMultiple: number;
 }
 
@@ -53,51 +47,55 @@ export interface BacktestResult {
   avgLoss: number;
   sharpe: number;
   sortino: number;
-  // Added metrics (UI may ignore these safely):
   calmar?: number;
   maxConsecLosses?: number;
   tradesPerWeek?: number;
 }
 
 const HOUR = 3_600_000;
-const FOUR_H = 14_400_000;
+const FOUR_HOURS = 14_400_000;
 
-/** Aggregate 15m candles into a higher timeframe by time-bucketing. */
-function resample(c15: Candle[], factorMs: number): Candle[] {
+function resample(candles: Candle[], factorMs: number): Candle[] {
   const map = new Map<number, Candle>();
   const order: number[] = [];
-  for (const c of c15) {
-    const key = Math.floor(c.openTime / factorMs) * factorMs;
-    const ex = map.get(key);
-    if (!ex) {
+
+  for (const candle of candles) {
+    const key =
+      Math.floor(candle.openTime / factorMs) * factorMs;
+
+    const existing = map.get(key);
+
+    if (!existing) {
       map.set(key, {
         openTime: key,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
         closeTime: key + factorMs - 1,
       });
+
       order.push(key);
     } else {
-      ex.high = Math.max(ex.high, c.high);
-      ex.low = Math.min(ex.low, c.low);
-      ex.close = c.close;
-      ex.volume += c.volume;
+      existing.high = Math.max(existing.high, candle.high);
+      existing.low = Math.min(existing.low, candle.low);
+      existing.close = candle.close;
+      existing.volume += candle.volume;
     }
   }
-  return order.map((k) => map.get(k)!);
+
+  return order.map((key) => map.get(key)!);
 }
 
-interface OpenPos {
+interface OpenPosition {
   direction: "LONG" | "SHORT";
   entry: number;
-  stop: number; // moves to break-even after TP1
+  stop: number;
   tp1: number;
   tp2: number;
-  sizeCoins: number; // full position size in coins
-  remaining: number; // fraction still open (1 -> 0.5 after TP1 -> 0)
+  sizeCoins: number;
+  remaining: number;
   tookTP1: boolean;
   openTime: number;
   openIdx: number;
@@ -105,248 +103,552 @@ interface OpenPos {
   lastExit: number;
 }
 
-export function runBacktest(p: BacktestParams): BacktestResult {
-  const c = p.candles;
-  const c1h = resample(c, HOUR);
-  const c4h = resample(c, FOUR_H);
-  const minScore = p.minScore ?? 80;
+export function runBacktest(
+  params: BacktestParams,
+): BacktestResult {
+  const candles = params.candles;
 
-  const fee = p.feeBps / 10000;
-  const slip = p.slippageBps / 10000;
-  const riskAmount = (p.accountSize * p.riskPct) / 100;
+  const candles1h = resample(candles, HOUR);
+  const candles4h = resample(candles, FOUR_HOURS);
 
-  const W15 = 600; // rolling window: enough warmup for EMA200
+  const minScore = params.minScore ?? 80;
+
+  const fee = params.feeBps / 10_000;
+  const slippage = params.slippageBps / 10_000;
+
+  const riskAmount =
+    (params.accountSize * params.riskPct) / 100;
+
+  const W15 = 600;
   const WHTF = 400;
-  const START = 260; // ensure EMA200 has history
+  const START = 260;
 
-  let p1 = -1; // pointer: last CLOSED 1h candle index <= current 15m closeTime
-  let p4 = -1;
+  let index1h = -1;
+  let index4h = -1;
 
   const trades: BacktestTrade[] = [];
-  let equity = p.accountSize;
 
-  // Strategy audit: count why decisions become NO_TRADE.
+  let equity = params.accountSize;
+
+  const equityCurve: {
+    time: number;
+    value: number;
+  }[] = [];
+
+  let open: OpenPosition | null = null;
+
   const auditReasons: Record<string, number> = {};
   let auditDecisions = 0;
   let auditSignals = 0;
 
-  const equityCurve: { time: number; value: number }[] = [];
-  let open: OpenPos | null = null;
-
-  const dirSign = (d: "LONG" | "SHORT") => (d === "LONG" ? 1 : -1);
+  const directionSign = (
+    direction: "LONG" | "SHORT",
+  ): number => {
+    return direction === "LONG" ? 1 : -1;
+  };
 
   function finalizeTrade(
-    pos: OpenPos,
+    position: OpenPosition,
     outcome: "TP1" | "TP2" | "STOP",
     closeTime: number,
-  ) {
+  ): void {
     trades.push({
-      openTime: pos.openTime,
+      openTime: position.openTime,
       closeTime,
-      direction: pos.direction,
-      entry: pos.entry,
-      stop: pos.stop,
-      tp1: pos.tp1,
-      tp2: pos.tp2,
-      exit: pos.lastExit,
+      direction: position.direction,
+      entry: position.entry,
+      stop: position.stop,
+      tp1: position.tp1,
+      tp2: position.tp2,
+      exit: position.lastExit,
       outcome,
-      pnl: pos.realizedPnl,
-      rMultiple: riskAmount > 0 ? pos.realizedPnl / riskAmount : 0,
+      pnl: position.realizedPnl,
+      rMultiple:
+        riskAmount > 0
+          ? position.realizedPnl / riskAmount
+          : 0,
     });
   }
 
-  /** Settle a fraction of the open position at exitPrice; mutate equity. */
-  function settle(pos: OpenPos, fraction: number, exitPrice: number, closeTime: number) {
-    const coins = pos.sizeCoins * fraction;
-    const sign = dirSign(pos.direction);
-    let pnl = (exitPrice - pos.entry) * sign * coins;
-    const notionalEntry = pos.entry * coins;
-    const notionalExit = exitPrice * coins;
-    // round-trip fees + slippage on this fraction
-    pnl -= (notionalEntry + notionalExit) * (fee + slip);
-    // funding: longs pay positive funding, shorts receive it
-    const hours = (closeTime - pos.openTime) / HOUR;
-    const funding = notionalEntry * p.fundingRateAvg * (hours / 8);
-    pnl -= pos.direction === "LONG" ? funding : -funding;
-    equity += pnl;
-    pos.realizedPnl += pnl;
-    pos.lastExit = exitPrice;
-  }
+  function settle(
+    position: OpenPosition,
+    fraction: number,
+    exitPrice: number,
+    closeTime: number,
+  ): void {
+    const coins =
+      position.sizeCoins * fraction;
 
-  for (let i = 0; i < c.length; i++) {
-    const bar = c[i]!;
-    while (p1 + 1 < c1h.length && c1h[p1 + 1]!.closeTime <= bar.closeTime) p1++;
-    while (p4 + 1 < c4h.length && c4h[p4 + 1]!.closeTime <= bar.closeTime) p4++;
+    const sign = directionSign(
+      position.direction,
+    );
 
-    // ---- Manage an open position (only from the bar AFTER entry) ----
-    if (open && i > open.openIdx) {
-      const dir = open.direction;
-      const hitStop =
-        dir === "LONG" ? bar.low <= open.stop : bar.high >= open.stop;
-      const hitTP1 =
-        !open.tookTP1 &&
-        (dir === "LONG" ? bar.high >= open.tp1 : bar.low <= open.tp1);
-      const hitTP2 = dir === "LONG" ? bar.high >= open.tp2 : bar.low <= open.tp2;
+    let pnl =
+      (exitPrice - position.entry) *
+      sign *
+      coins;
 
-      let closed = false;
-      // Conservative: if stop and target are in the same bar, assume stop first.
-      if (hitStop) {
-        settle(open, open.remaining, open.stop, bar.closeTime);
-        open.remaining = 0;
-        closed = true;
-        finalizeTrade(open, open.tookTP1 ? "TP1" : "STOP", bar.closeTime);
-      } else {
-        if (hitTP1) {
-          settle(open, 0.5, open.tp1, bar.closeTime);
-          open.remaining = 0.5;
-          open.tookTP1 = true;
-          open.stop = open.entry; // move to break-even
-        }
-        if (hitTP2) {
-          settle(open, open.remaining, open.tp2, bar.closeTime);
-          open.remaining = 0;
-          closed = true;
-          finalizeTrade(open, "TP2", bar.closeTime);
-        }
-      }
-      if (closed) open = null;
+    const entryNotional =
+      position.entry * coins;
+
+    const exitNotional =
+      exitPrice * coins;
+
+    pnl -=
+      (entryNotional + exitNotional) *
+      (fee + slippage);
+
+    const hours =
+      (closeTime - position.openTime) /
+      HOUR;
+
+    const funding =
+      entryNotional *
+      params.fundingRateAvg *
+      (hours / 8);
+
+    if (position.direction === "LONG") {
+      pnl -= funding;
+    } else {
+      pnl += funding;
     }
 
-    // ---- Look for a new entry when flat ----
+    equity += pnl;
+    position.realizedPnl += pnl;
+    position.lastExit = exitPrice;
+  }
+
+  for (let i = 0; i < candles.length; i++) {
+    const bar = candles[i]!;
+
+    while (
+      index1h + 1 < candles1h.length &&
+      candles1h[index1h + 1]!.closeTime <=
+        bar.closeTime
+    ) {
+      index1h++;
+    }
+
+    while (
+      index4h + 1 < candles4h.length &&
+      candles4h[index4h + 1]!.closeTime <=
+        bar.closeTime
+    ) {
+      index4h++;
+    }
+
+    if (open && i > open.openIdx) {
+      const direction = open.direction;
+
+      const hitStop =
+        direction === "LONG"
+          ? bar.low <= open.stop
+          : bar.high >= open.stop;
+
+      const hitTP1 =
+        !open.tookTP1 &&
+        (direction === "LONG"
+          ? bar.high >= open.tp1
+          : bar.low <= open.tp1);
+
+      const hitTP2 =
+        direction === "LONG"
+          ? bar.high >= open.tp2
+          : bar.low <= open.tp2;
+
+      let closed = false;
+
+      /*
+       * Conservative candle assumption:
+       * if stop and target are both touched
+       * during the same candle, stop is assumed
+       * to have happened first.
+       */
+      if (hitStop) {
+        settle(
+          open,
+          open.remaining,
+          open.stop,
+          bar.closeTime,
+        );
+
+        open.remaining = 0;
+        closed = true;
+
+        finalizeTrade(
+          open,
+          open.tookTP1 ? "TP1" : "STOP",
+          bar.closeTime,
+        );
+      } else {
+        if (hitTP1) {
+          settle(
+            open,
+            0.5,
+            open.tp1,
+            bar.closeTime,
+          );
+
+          open.remaining = 0.5;
+          open.tookTP1 = true;
+          open.stop = open.entry;
+        }
+
+        if (hitTP2) {
+          settle(
+            open,
+            open.remaining,
+            open.tp2,
+            bar.closeTime,
+          );
+
+          open.remaining = 0;
+          closed = true;
+
+          finalizeTrade(
+            open,
+            "TP2",
+            bar.closeTime,
+          );
+        }
+      }
+
+      if (closed) {
+        open = null;
+      }
+    }
+
     if (!open && i >= START) {
-      const w15 = c.slice(Math.max(0, i - W15 + 1), i + 1);
-      const w1 = c1h.slice(Math.max(0, p1 - WHTF + 1), p1 + 1);
-      const w4 = c4h.slice(Math.max(0, p4 - WHTF + 1), p4 + 1);
-      if (w15.length >= 210 && w1.length >= 60 && w4.length >= 60) {
-        const ctx: StrategyContext = {
-          candles15m: w15,
-          candles1h: w1,
-          candles4h: w4,
+      const window15m = candles.slice(
+        Math.max(0, i - W15 + 1),
+        i + 1,
+      );
+
+      const window1h = candles1h.slice(
+        Math.max(
+          0,
+          index1h - WHTF + 1,
+        ),
+        index1h + 1,
+      );
+
+      const window4h = candles4h.slice(
+        Math.max(
+          0,
+          index4h - WHTF + 1,
+        ),
+        index4h + 1,
+      );
+
+      if (
+        window15m.length >= 210 &&
+        window1h.length >= 60 &&
+        window4h.length >= 60
+      ) {
+        const context: StrategyContext = {
+          candles15m: window15m,
+          candles1h: window1h,
+          candles4h: window4h,
           price: bar.close,
-          fundingRate: p.fundingRateAvg,
+          fundingRate:
+            params.fundingRateAvg,
           openInterest: 0,
-          oiHistory: [], // historical OI unavailable -> scored as 0 (conservative)
+          oiHistory: [],
           longShortRatio: 1,
         };
-        const res = decide(ctx, {
+
+        const result = decide(context, {
           minScore,
-          accountSize: p.accountSize,
-          riskPerTrade: p.riskPct,
+          accountSize: params.accountSize,
+          riskPerTrade: params.riskPct,
           leverage: 1,
+
+          volumeMultiplier:
+            params.volumeMultiplier,
+
+          rsiLongMin:
+            params.rsiLongMin,
+
+          rsiLongMax:
+            params.rsiLongMax,
+
+          rsiShortMin:
+            params.rsiShortMin,
+
+          rsiShortMax:
+            params.rsiShortMax,
         });
 
         auditDecisions++;
 
-        if (res.decision === "NO_TRADE") {
-          for (const reason of res.noTradeReasons ?? []) {
-            auditReasons[reason.code] = (auditReasons[reason.code] ?? 0) + 1;
+        if (
+          result.decision ===
+          "NO_TRADE"
+        ) {
+          for (const reason of
+            result.noTradeReasons ?? []) {
+            auditReasons[reason.code] =
+              (auditReasons[reason.code] ?? 0) +
+              1;
           }
-        } else if (res.trade) {
+        } else if (result.trade) {
           auditSignals++;
         }
 
-        if (res.decision !== "NO_TRADE" && res.trade) {
-          const t = res.trade;
+        if (
+          result.decision !==
+            "NO_TRADE" &&
+          result.trade
+        ) {
+          const trade = result.trade;
+
           open = {
-            direction: t.direction,
-            entry: t.entry,
-            stop: t.stop,
-            tp1: t.tp1,
-            tp2: t.tp2,
-            sizeCoins: t.risk.positionSize,
+            direction: trade.direction,
+            entry: trade.entry,
+            stop: trade.stop,
+            tp1: trade.tp1,
+            tp2: trade.tp2,
+            sizeCoins:
+              trade.risk.positionSize,
             remaining: 1,
             tookTP1: false,
             openTime: bar.openTime,
             openIdx: i,
             realizedPnl: 0,
-            lastExit: t.entry,
+            lastExit: trade.entry,
           };
         }
       }
     }
 
-    equityCurve.push({ time: bar.closeTime, value: equity });
+    equityCurve.push({
+      time: bar.closeTime,
+      value: equity,
+    });
   }
 
-  // ---------- Stats ----------
-  const wins = trades.filter((t) => t.pnl > 0);
-  const losses = trades.filter((t) => t.pnl <= 0);
-  const winrate = trades.length ? (wins.length / trades.length) * 100 : 0;
-  const grossWin = wins.reduce((s, t) => s + t.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
-  const profitFactor =
-    grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 99 : 0;
-  const avgWin = wins.length ? grossWin / wins.length : 0;
-  const avgLoss = losses.length ? -grossLoss / losses.length : 0;
-  const expectancy = trades.length
-    ? trades.reduce((s, t) => s + t.pnl, 0) / trades.length
-    : 0;
+  const wins = trades.filter(
+    (trade) => trade.pnl > 0,
+  );
 
-  // Drawdown over the equity curve
-  let peak = p.accountSize;
-  let maxDD = 0;
-  for (const pt of equityCurve) {
-    if (pt.value > peak) peak = pt.value;
-    const dd = ((peak - pt.value) / peak) * 100;
-    if (dd > maxDD) maxDD = dd;
-  }
-  const drawdown =
-    equityCurve.length > 0
-      ? ((peak - (last(equityCurve)?.value ?? p.accountSize)) / peak) * 100
+  const losses = trades.filter(
+    (trade) => trade.pnl <= 0,
+  );
+
+  const winrate =
+    trades.length > 0
+      ? (wins.length / trades.length) * 100
       : 0;
 
-  // TIME-BASED Sharpe / Sortino on DAILY equity returns, annualized (crypto: 365d)
-  const daily = toDailyReturns(equityCurve);
-  const dMean = mean(daily);
-  const dStd = std(daily, dMean);
-  const dDown = std(
-    daily.filter((r) => r < 0).map((r) => r),
+  const grossWin = wins.reduce(
+    (sum, trade) => sum + trade.pnl,
     0,
   );
-  const sharpe = dStd > 0 ? (dMean / dStd) * Math.sqrt(365) : 0;
-  const sortino = dDown > 0 ? (dMean / dDown) * Math.sqrt(365) : 0;
 
-  // Extra metrics
+  const grossLoss = Math.abs(
+    losses.reduce(
+      (sum, trade) => sum + trade.pnl,
+      0,
+    ),
+  );
+
+  const profitFactor =
+    grossLoss > 0
+      ? grossWin / grossLoss
+      : grossWin > 0
+        ? 99
+        : 0;
+
+  const avgWin =
+    wins.length > 0
+      ? grossWin / wins.length
+      : 0;
+
+  const avgLoss =
+    losses.length > 0
+      ? -grossLoss / losses.length
+      : 0;
+
+  const expectancy =
+    trades.length > 0
+      ? trades.reduce(
+          (sum, trade) =>
+            sum + trade.pnl,
+          0,
+        ) / trades.length
+      : 0;
+
+  let peak = params.accountSize;
+  let maxDD = 0;
+
+  for (const point of equityCurve) {
+    if (point.value > peak) {
+      peak = point.value;
+    }
+
+    const dd =
+      peak > 0
+        ? ((peak - point.value) /
+            peak) *
+          100
+        : 0;
+
+    if (dd > maxDD) {
+      maxDD = dd;
+    }
+  }
+
+  const finalEquity =
+    last(equityCurve)?.value ??
+    params.accountSize;
+
+  const drawdown =
+    peak > 0
+      ? ((peak - finalEquity) /
+          peak) *
+        100
+      : 0;
+
+  const dailyReturns =
+    toDailyReturns(equityCurve);
+
+  const dailyMean = mean(dailyReturns);
+
+  const dailyStd = std(
+    dailyReturns,
+    dailyMean,
+  );
+
+  const downsideStd = std(
+    dailyReturns.filter(
+      (value) => value < 0,
+    ),
+    0,
+  );
+
+  const sharpe =
+    dailyStd > 0
+      ? (dailyMean / dailyStd) *
+        Math.sqrt(365)
+      : 0;
+
+  const sortino =
+    downsideStd > 0
+      ? (dailyMean / downsideStd) *
+        Math.sqrt(365)
+      : 0;
+
   const spanMs =
     equityCurve.length > 1
-      ? equityCurve[equityCurve.length - 1]!.time - equityCurve[0]!.time
+      ? equityCurve[
+          equityCurve.length - 1
+        ]!.time -
+        equityCurve[0]!.time
       : 0;
-  const years = spanMs / (365 * 24 * HOUR);
+
+  const years =
+    spanMs /
+    (365 * 24 * HOUR);
+
   const cagr =
-    years > 0 && p.accountSize > 0
-      ? (Math.pow(equity / p.accountSize, 1 / years) - 1) * 100
+    years > 0 &&
+    params.accountSize > 0 &&
+    finalEquity > 0
+      ? (Math.pow(
+          finalEquity /
+            params.accountSize,
+          1 / years,
+        ) -
+          1) *
+        100
       : 0;
-  const calmar = maxDD > 0 ? cagr / maxDD : 0;
+
+  const calmar =
+    maxDD > 0
+      ? cagr / maxDD
+      : 0;
+
   const tradesPerWeek =
-    spanMs > 0 ? trades.length / (spanMs / (7 * 24 * HOUR)) : 0;
+    spanMs > 0
+      ? trades.length /
+        (spanMs /
+          (7 * 24 * HOUR))
+      : 0;
 
   let maxConsecLosses = 0;
-  let run = 0;
-  for (const t of trades) {
-    if (t.pnl <= 0) {
-      run++;
-      if (run > maxConsecLosses) maxConsecLosses = run;
-    } else run = 0;
+  let consecutiveLosses = 0;
+
+  for (const trade of trades) {
+    if (trade.pnl <= 0) {
+      consecutiveLosses++;
+
+      if (
+        consecutiveLosses >
+        maxConsecLosses
+      ) {
+        maxConsecLosses =
+          consecutiveLosses;
+      }
+    } else {
+      consecutiveLosses = 0;
+    }
   }
 
-  console.log("\n=== STRATEGY AUDIT ===");
-  console.log("Decisions evaluated:", auditDecisions);
-  console.log("Signals:", auditSignals);
-  console.log("NO-TRADE REASONS:");
+  console.log("");
+  console.log(
+    "=== STRATEGY AUDIT ===",
+  );
 
-  for (const [reason, count] of Object.entries(auditReasons).sort((a, b) => b[1] - a[1])) {
-    console.log(`${reason}: ${count}`);
+  console.log(
+    "Volume multiplier:",
+    params.volumeMultiplier ?? 1.0,
+  );
+
+  console.log(
+    "Decisions evaluated:",
+    auditDecisions,
+  );
+
+  console.log(
+    "Signals:",
+    auditSignals,
+  );
+
+  console.log(
+    "NO-TRADE REASONS:",
+  );
+
+  for (const [
+    reason,
+    count,
+  ] of Object.entries(
+    auditReasons,
+  ).sort(
+    (a, b) => b[1] - a[1],
+  )) {
+    console.log(
+      `${reason}: ${count}`,
+    );
   }
 
-  // Controlled relaxation diagnostic.
-  // IMPORTANT: this does NOT modify the live strategy.
-  // It only reports which combinations of current no-trade reasons
-  // are responsible for rejecting otherwise plausible setups.
-  const totalNoTrades = auditDecisions - auditSignals;
+  const totalNoTrades =
+    auditDecisions -
+    auditSignals;
 
-  console.log("\n=== CONTROLLED RELAXATION DIAGNOSTIC ===");
-  console.log("Baseline signals:", auditSignals);
-  console.log("Baseline NO_TRADE:", totalNoTrades);
+  console.log("");
+  console.log(
+    "=== CONTROLLED RELAXATION DIAGNOSTIC ===",
+  );
+
+  console.log(
+    "Baseline/variant signals:",
+    auditSignals,
+  );
+
+  console.log(
+    "NO_TRADE:",
+    totalNoTrades,
+  );
 
   const diagnosticReasons = [
     "VOLUME_NOT_CONFIRMED",
@@ -354,31 +656,34 @@ export function runBacktest(p: BacktestParams): BacktestResult {
     "ENTRY_NOT_VALID",
   ];
 
-  console.log("\nPotential quality-filter bottlenecks:");
+  console.log("");
+  console.log(
+    "Potential quality-filter bottlenecks:",
+  );
 
-  for (const reason of diagnosticReasons) {
-    const rejected = auditReasons[reason] ?? 0;
-    const share = auditDecisions > 0
-      ? ((rejected / auditDecisions) * 100).toFixed(1)
-      : "0.0";
+  for (const reason of
+    diagnosticReasons) {
+    const rejected =
+      auditReasons[reason] ?? 0;
+
+    const share =
+      auditDecisions > 0
+        ? (
+            (rejected /
+              auditDecisions) *
+            100
+          ).toFixed(1)
+        : "0.0";
 
     console.log(
-      `${reason}: ${rejected} rejections (${share}% of evaluated decisions)`
+      `${reason}: ${rejected} rejections (${share}% of evaluated decisions)`,
     );
-  }
-
-  console.log("Decisions evaluated:", auditDecisions);
-  console.log("Signals:", auditSignals);
-  console.log("NO-TRADE REASONS:");
-
-  for (const [reason, count] of Object.entries(auditReasons).sort((a, b) => b[1] - a[1])) {
-    console.log(`${reason}: ${count}`);
   }
 
   return {
     trades,
     equity: equityCurve,
-    finalEquity: equity,
+    finalEquity,
     drawdown,
     maxDD,
     winrate,
@@ -394,58 +699,160 @@ export function runBacktest(p: BacktestParams): BacktestResult {
   };
 }
 
-function toDailyReturns(curve: { time: number; value: number }[]): number[] {
-  if (curve.length < 2) return [];
-  const byDay = new Map<number, number>(); // day -> last equity that day
-  for (const pt of curve) {
-    const day = Math.floor(pt.time / (24 * HOUR));
-    byDay.set(day, pt.value);
+function toDailyReturns(
+  curve: {
+    time: number;
+    value: number;
+  }[],
+): number[] {
+  if (curve.length < 2) {
+    return [];
   }
-  const days = [...byDay.keys()].sort((a, b) => a - b);
-  const eq = days.map((d) => byDay.get(d)!);
-  const rets: number[] = [];
-  for (let i = 1; i < eq.length; i++) {
-    const prev = eq[i - 1]!;
-    if (prev > 0) rets.push((eq[i]! - prev) / prev);
+
+  const byDay =
+    new Map<number, number>();
+
+  for (const point of curve) {
+    const day = Math.floor(
+      point.time /
+        (24 * HOUR),
+    );
+
+    byDay.set(
+      day,
+      point.value,
+    );
   }
-  return rets;
+
+  const days = [
+    ...byDay.keys(),
+  ].sort(
+    (a, b) => a - b,
+  );
+
+  const values = days.map(
+    (day) => byDay.get(day)!,
+  );
+
+  const returns: number[] = [];
+
+  for (
+    let i = 1;
+    i < values.length;
+    i++
+  ) {
+    const previous =
+      values[i - 1]!;
+
+    if (previous > 0) {
+      returns.push(
+        (values[i]! -
+          previous) /
+          previous,
+      );
+    }
+  }
+
+  return returns;
 }
 
-function mean(xs: number[]): number {
-  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
-}
-function std(xs: number[], m: number): number {
-  if (!xs.length) return 0;
-  const mm = m || mean(xs);
-  return Math.sqrt(xs.reduce((s, x) => s + (x - mm) ** 2, 0) / xs.length);
+function mean(
+  values: number[],
+): number {
+  if (!values.length) {
+    return 0;
+  }
+
+  return (
+    values.reduce(
+      (sum, value) =>
+        sum + value,
+      0,
+    ) / values.length
+  );
 }
 
-/** Fetch enough 15m candles to cover N days from Binance. */
+function std(
+  values: number[],
+  providedMean: number,
+): number {
+  if (!values.length) {
+    return 0;
+  }
+
+  const average =
+    providedMean ||
+    mean(values);
+
+  return Math.sqrt(
+    values.reduce(
+      (sum, value) =>
+        sum +
+        (value - average) ** 2,
+      0,
+    ) / values.length,
+  );
+}
+
 export async function fetchHistory(
   symbol: string,
   days: number,
 ): Promise<Candle[]> {
-  const target = Math.ceil((days * 24 * 60) / 15);
-  const out: Candle[] = [];
+  const target = Math.ceil(
+    (days * 24 * 60) / 15,
+  );
+
+  const candles: Candle[] = [];
+
   let endTime = Date.now();
-  while (out.length < target) {
-    const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=15m&limit=1500&endTime=${endTime}`;
-    const res = await fetch(url);
-    if (!res.ok) break;
-    const raw = (await res.json()) as (string | number)[][];
-    if (!raw.length) break;
-    const batch: Candle[] = raw.map((k) => ({
-      openTime: Number(k[0]),
-      open: Number(k[1]),
-      high: Number(k[2]),
-      low: Number(k[3]),
-      close: Number(k[4]),
-      volume: Number(k[5]),
-      closeTime: Number(k[6]),
-    }));
-    out.unshift(...batch);
-    endTime = batch[0]!.openTime - 1;
-    if (batch.length < 1500) break;
+
+  while (
+    candles.length < target
+  ) {
+    const url =
+      "https://fapi.binance.com/fapi/v1/klines" +
+      `?symbol=${encodeURIComponent(symbol)}` +
+      "&interval=15m" +
+      "&limit=1500" +
+      `&endTime=${endTime}`;
+
+    const response =
+      await fetch(url);
+
+    if (!response.ok) {
+      break;
+    }
+
+    const raw =
+      (await response.json()) as (
+        | string
+        | number
+      )[][];
+
+    if (!raw.length) {
+      break;
+    }
+
+    const batch: Candle[] =
+      raw.map((k) => ({
+        openTime: Number(k[0]),
+        open: Number(k[1]),
+        high: Number(k[2]),
+        low: Number(k[3]),
+        close: Number(k[4]),
+        volume: Number(k[5]),
+        closeTime: Number(k[6]),
+      }));
+
+    candles.unshift(...batch);
+
+    endTime =
+      batch[0]!.openTime - 1;
+
+    if (batch.length < 1500) {
+      break;
+    }
   }
-  return out.slice(-target);
+
+  return candles.slice(-target);
 }
