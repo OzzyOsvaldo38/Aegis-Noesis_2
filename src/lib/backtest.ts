@@ -236,7 +236,7 @@ export function runBacktest(p: BacktestParams): BacktestResult {
             stop: t.stop,
             tp1: t.tp1,
             tp2: t.tp2,
-            sizeCoins: t.positionSize,
+            sizeCoins: t.risk.positionSize,
             remaining: 1,
             tookTP1: false,
             openTime: bar.openTime,
