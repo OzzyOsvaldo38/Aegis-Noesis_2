@@ -274,6 +274,20 @@ export function runBacktest(p: BacktestParams): BacktestResult {
     equityCurve.push({ time: bar.closeTime, value: equity });
   }
 
+  // ---- Open position at the end of the data ----
+  // Settle the remainder at the last available close so the statistics can't be
+  // flattered by an unresolved position. Labelled by the worst-case realised
+  // path (TP1 already banked, otherwise STOP).
+  const lastBar = last(c);
+  if (open && open.remaining > 0 && lastBar) {
+    const pos = open;
+    settle(pos, pos.remaining, lastBar.close, lastBar.closeTime);
+    pos.remaining = 0;
+    finalizeTrade(pos, pos.tookTP1 ? "TP1" : "STOP", lastBar.closeTime);
+    open = null;
+    equityCurve.push({ time: lastBar.closeTime, value: equity });
+  }
+
   // ---------- Stats ----------
   const wins = trades.filter((t) => t.pnl > 0);
   const losses = trades.filter((t) => t.pnl <= 0);
