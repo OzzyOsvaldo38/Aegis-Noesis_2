@@ -124,6 +124,12 @@ export function runBacktest(p: BacktestParams): BacktestResult {
 
   const trades: BacktestTrade[] = [];
   let equity = p.accountSize;
+
+  // Strategy audit: count why decisions become NO_TRADE.
+  const auditReasons: Record<string, number> = {};
+  let auditDecisions = 0;
+  let auditSignals = 0;
+
   const equityCurve: { time: number; value: number }[] = [];
   let open: OpenPos | null = null;
 
@@ -228,6 +234,17 @@ export function runBacktest(p: BacktestParams): BacktestResult {
           riskPerTrade: p.riskPct,
           leverage: 1,
         });
+
+        auditDecisions++;
+
+        if (res.decision === "NO_TRADE") {
+          for (const reason of res.noTradeReasons ?? []) {
+            auditReasons[reason.code] = (auditReasons[reason.code] ?? 0) + 1;
+          }
+        } else if (res.trade) {
+          auditSignals++;
+        }
+
         if (res.decision !== "NO_TRADE" && res.trade) {
           const t = res.trade;
           open = {
@@ -310,6 +327,52 @@ export function runBacktest(p: BacktestParams): BacktestResult {
       run++;
       if (run > maxConsecLosses) maxConsecLosses = run;
     } else run = 0;
+  }
+
+  console.log("\n=== STRATEGY AUDIT ===");
+  console.log("Decisions evaluated:", auditDecisions);
+  console.log("Signals:", auditSignals);
+  console.log("NO-TRADE REASONS:");
+
+  for (const [reason, count] of Object.entries(auditReasons).sort((a, b) => b[1] - a[1])) {
+    console.log(`${reason}: ${count}`);
+  }
+
+  // Controlled relaxation diagnostic.
+  // IMPORTANT: this does NOT modify the live strategy.
+  // It only reports which combinations of current no-trade reasons
+  // are responsible for rejecting otherwise plausible setups.
+  const totalNoTrades = auditDecisions - auditSignals;
+
+  console.log("\n=== CONTROLLED RELAXATION DIAGNOSTIC ===");
+  console.log("Baseline signals:", auditSignals);
+  console.log("Baseline NO_TRADE:", totalNoTrades);
+
+  const diagnosticReasons = [
+    "VOLUME_NOT_CONFIRMED",
+    "RSI_NOT_CONFIRMED",
+    "ENTRY_NOT_VALID",
+  ];
+
+  console.log("\nPotential quality-filter bottlenecks:");
+
+  for (const reason of diagnosticReasons) {
+    const rejected = auditReasons[reason] ?? 0;
+    const share = auditDecisions > 0
+      ? ((rejected / auditDecisions) * 100).toFixed(1)
+      : "0.0";
+
+    console.log(
+      `${reason}: ${rejected} rejections (${share}% of evaluated decisions)`
+    );
+  }
+
+  console.log("Decisions evaluated:", auditDecisions);
+  console.log("Signals:", auditSignals);
+  console.log("NO-TRADE REASONS:");
+
+  for (const [reason, count] of Object.entries(auditReasons).sort((a, b) => b[1] - a[1])) {
+    console.log(`${reason}: ${count}`);
   }
 
   return {
