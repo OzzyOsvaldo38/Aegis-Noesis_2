@@ -128,9 +128,13 @@ export function runBacktest(p: BacktestParams): BacktestResult {
   const slip = p.slippageBps / 10000;
   const riskAmount = (p.accountSize * p.riskPct) / 100;
 
-  const W15 = 600; // rolling window: enough warmup for EMA200
+  // Warm-up: EMA200 needs ~210 candles on EVERY timeframe the strategy reads.
+  // The binding constraint is 4H (16 x 15m per candle), so the backtest simply
+  // starts later instead of padding data.
+  const MIN_HIST = 210;
+  const W15 = 600; // rolling window: enough warmup for EMA200 on 15m
   const WHTF = 400;
-  const START = 260; // ensure EMA200 has history
+  const START = MIN_HIST * Math.round(FOUR_H / FIFTEEN_M); // ~3360 15m bars
 
   let p1 = -1; // pointer: last CLOSED 1h candle index <= current 15m closeTime
   let p4 = -1;
