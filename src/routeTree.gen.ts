@@ -9,37 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SignalRouteImport } from './routes/signal'
-import { Route as RiskRechnerRouteImport } from './routes/risk-rechner'
-import { Route as JournalRouteImport } from './routes/journal'
-import { Route as EinstellungenRouteImport } from './routes/einstellungen'
-import { Route as BacktestRouteImport } from './routes/backtest'
-import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as BacktestRouteImport } from './routes/backtest'
+import { Route as EinstellungenRouteImport } from './routes/einstellungen'
+import { Route as JournalRouteImport } from './routes/journal'
+import { Route as RiskRechnerRouteImport } from './routes/risk-rechner'
+import { Route as SignalRouteImport } from './routes/signal'
 
-const SignalRoute = SignalRouteImport.update({
-  id: '/signal',
-  path: '/signal',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RiskRechnerRoute = RiskRechnerRouteImport.update({
-  id: '/risk-rechner',
-  path: '/risk-rechner',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const JournalRoute = JournalRouteImport.update({
-  id: '/journal',
-  path: '/journal',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const EinstellungenRoute = EinstellungenRouteImport.update({
-  id: '/einstellungen',
-  path: '/einstellungen',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BacktestRoute = BacktestRouteImport.update({
-  id: '/backtest',
-  path: '/backtest',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AnalyticsRoute = AnalyticsRouteImport.update({
@@ -47,9 +27,29 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const BacktestRoute = BacktestRouteImport.update({
+  id: '/backtest',
+  path: '/backtest',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EinstellungenRoute = EinstellungenRouteImport.update({
+  id: '/einstellungen',
+  path: '/einstellungen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JournalRoute = JournalRouteImport.update({
+  id: '/journal',
+  path: '/journal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RiskRechnerRoute = RiskRechnerRouteImport.update({
+  id: '/risk-rechner',
+  path: '/risk-rechner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignalRoute = SignalRouteImport.update({
+  id: '/signal',
+  path: '/signal',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -123,39 +123,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/signal': {
-      id: '/signal'
-      path: '/signal'
-      fullPath: '/signal'
-      preLoaderRoute: typeof SignalRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/risk-rechner': {
-      id: '/risk-rechner'
-      path: '/risk-rechner'
-      fullPath: '/risk-rechner'
-      preLoaderRoute: typeof RiskRechnerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/journal': {
-      id: '/journal'
-      path: '/journal'
-      fullPath: '/journal'
-      preLoaderRoute: typeof JournalRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/einstellungen': {
-      id: '/einstellungen'
-      path: '/einstellungen'
-      fullPath: '/einstellungen'
-      preLoaderRoute: typeof EinstellungenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/backtest': {
-      id: '/backtest'
-      path: '/backtest'
-      fullPath: '/backtest'
-      preLoaderRoute: typeof BacktestRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/analytics': {
@@ -165,11 +137,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/backtest': {
+      id: '/backtest'
+      path: '/backtest'
+      fullPath: '/backtest'
+      preLoaderRoute: typeof BacktestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/einstellungen': {
+      id: '/einstellungen'
+      path: '/einstellungen'
+      fullPath: '/einstellungen'
+      preLoaderRoute: typeof EinstellungenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/journal': {
+      id: '/journal'
+      path: '/journal'
+      fullPath: '/journal'
+      preLoaderRoute: typeof JournalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/risk-rechner': {
+      id: '/risk-rechner'
+      path: '/risk-rechner'
+      fullPath: '/risk-rechner'
+      preLoaderRoute: typeof RiskRechnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signal': {
+      id: '/signal'
+      path: '/signal'
+      fullPath: '/signal'
+      preLoaderRoute: typeof SignalRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
