@@ -11,7 +11,10 @@ export const Route = createFileRoute("/journal")({
   head: () => ({
     meta: [
       { title: "Journal — BTC Engine" },
-      { name: "description", content: "Trade-Journal mit Entry, SL, TP, PnL, R-Multiple." },
+      {
+        name: "description",
+        content: "Trade-Journal mit Entry, SL, TP, PnL, R-Multiple.",
+      },
     ],
   }),
   component: JournalPage,
@@ -23,6 +26,8 @@ const STATUS_TONE: Record<SignalStatus, string> = {
   TP2_HIT: "var(--color-bull)",
   STOPPED: "var(--color-bear)",
   CANCELLED: "var(--color-neutral)",
+  EXPIRED: "var(--color-neutral)",
+  INVALIDATED: "var(--color-bear)",
 };
 
 function JournalPage() {
@@ -36,13 +41,19 @@ function JournalPage() {
 
   useEffect(reload, []);
 
-  const closeAt = (sig: Signal, status: SignalStatus, exitPrice: number) => {
+  const closeAt = (
+    sig: Signal,
+    status: SignalStatus,
+    exitPrice: number,
+  ) => {
     const dir = sig.direction === "LONG" ? 1 : -1;
     const stopDist = Math.abs(sig.entry_price - sig.stop_loss);
     const grossPerCoin = (exitPrice - sig.entry_price) * dir;
     const pnl = grossPerCoin * sig.position_size;
     const r = stopDist > 0 ? grossPerCoin / stopDist : 0;
+
     store.updateSignal(sig.id, { status });
+
     store.addJournal({
       id: uid(),
       signal_id: sig.id,
@@ -54,6 +65,7 @@ function JournalPage() {
       notes: "",
       created_at: Date.now(),
     });
+
     reload();
   };
 
@@ -75,6 +87,7 @@ function JournalPage() {
         <div className="space-y-2">
           {signals.map((s) => {
             const j = journal.find((x) => x.signal_id === s.id);
+
             return (
               <div key={s.id} className="tile p-3">
                 <div className="flex items-center justify-between">
@@ -94,6 +107,7 @@ function JournalPage() {
                     >
                       {s.direction}
                     </span>
+
                     <span
                       className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
                       style={{
@@ -103,10 +117,12 @@ function JournalPage() {
                     >
                       {s.status.replace("_", " ")}
                     </span>
+
                     <span className="text-[11px] text-muted-foreground">
                       {fmtDate(s.timestamp)}
                     </span>
                   </div>
+
                   <button
                     onClick={() => remove(s.id)}
                     className="text-muted-foreground hover:text-[var(--color-bear)]"
@@ -114,12 +130,14 @@ function JournalPage() {
                     <Trash2 className="size-4" />
                   </button>
                 </div>
+
                 <div className="mt-2 grid grid-cols-4 gap-2 text-[11px]">
                   <Field label="Entry" value={fmtPrice(s.entry_price)} />
                   <Field label="SL" value={fmtPrice(s.stop_loss)} />
                   <Field label="TP1" value={fmtPrice(s.tp1)} />
                   <Field label="TP2" value={fmtPrice(s.tp2)} />
                 </div>
+
                 <div className="mt-1 grid grid-cols-3 gap-2 text-[11px]">
                   <Field label="Score" value={`${s.signal_score}`} />
                   <Field label="Risk" value={`${fmtUSD(s.risk_amount)} $`} />
@@ -128,11 +146,13 @@ function JournalPage() {
                     value={`${s.position_size.toFixed(4)}`}
                   />
                 </div>
+
                 {j ? (
                   <div className="mt-2 flex items-center justify-between rounded-md bg-muted/40 px-2 py-1.5 text-xs">
                     <span className="text-muted-foreground">
                       Exit {fmtPrice(j.exit)} · {j.r_multiple.toFixed(2)} R
                     </span>
+
                     <span
                       className="num font-bold"
                       style={{
@@ -153,16 +173,19 @@ function JournalPage() {
                       onClick={() => closeAt(s, "TP1_HIT", s.tp1)}
                       color="var(--color-bull)"
                     />
+
                     <CloseBtn
                       label="TP2 erreicht"
                       onClick={() => closeAt(s, "TP2_HIT", s.tp2)}
                       color="var(--color-bull)"
                     />
+
                     <CloseBtn
                       label="SL"
                       onClick={() => closeAt(s, "STOPPED", s.stop_loss)}
                       color="var(--color-bear)"
                     />
+
                     <CloseBtn
                       label="Cancel"
                       onClick={() => {
