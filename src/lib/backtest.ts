@@ -228,7 +228,13 @@ export function runBacktest(p: BacktestParams): BacktestResult {
       const w15 = c.slice(Math.max(0, i - W15 + 1), i + 1);
       const w1 = c1h.slice(Math.max(0, p1 - WHTF + 1), p1 + 1);
       const w4 = c4h.slice(Math.max(0, p4 - WHTF + 1), p4 + 1);
-      if (w15.length >= 210 && w1.length >= 60 && w4.length >= 60) {
+      // Skip any step whose visible history is insufficient — no trade, no
+      // substitute data. (Full data-health auditing lives in engine.ts.)
+      if (
+        w15.length >= MIN_HIST &&
+        w1.length >= MIN_HIST &&
+        w4.length >= MIN_HIST
+      ) {
         const ctx: StrategyContext = {
           candles15m: w15,
           candles1h: w1,
