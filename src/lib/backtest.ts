@@ -62,9 +62,18 @@ export interface BacktestResult {
 const HOUR = 3_600_000;
 const FOUR_H = 14_400_000;
 
-/** Aggregate 15m candles into a higher timeframe by time-bucketing. */
+const FIFTEEN_M = 900_000;
+
+/**
+ * Aggregate 15m candles into a higher timeframe by time-bucketing.
+ * A bucket is only returned when ALL of its 15m constituents are present, so an
+ * incomplete (or gap-damaged) HTF candle is never treated as closed. No values
+ * are invented.
+ */
 function resample(c15: Candle[], factorMs: number): Candle[] {
+  const expectedParts = Math.round(factorMs / FIFTEEN_M);
   const map = new Map<number, Candle>();
+  const parts = new Map<number, number>();
   const order: number[] = [];
   for (const c of c15) {
     const key = Math.floor(c.openTime / factorMs) * factorMs;
@@ -79,15 +88,19 @@ function resample(c15: Candle[], factorMs: number): Candle[] {
         volume: c.volume,
         closeTime: key + factorMs - 1,
       });
+      parts.set(key, 1);
       order.push(key);
     } else {
       ex.high = Math.max(ex.high, c.high);
       ex.low = Math.min(ex.low, c.low);
       ex.close = c.close;
       ex.volume += c.volume;
+      parts.set(key, (parts.get(key) ?? 0) + 1);
     }
   }
-  return order.map((k) => map.get(k)!);
+  return order
+    .filter((k) => (parts.get(k) ?? 0) === expectedParts)
+    .map((k) => map.get(k)!);
 }
 
 interface OpenPos {
