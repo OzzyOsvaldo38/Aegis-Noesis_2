@@ -37,6 +37,25 @@ function Inner({ settings }: { settings: AppSettings }) {
   const saveSignal = () => {
     if (!result?.trade) return;
 
+    const existing = store
+      .getSignals()
+      .find(
+        (s) =>
+          s.status === "OPEN" &&
+          s.timestamp === result.ts &&
+          s.symbol === settings.symbol &&
+          s.direction === result.trade?.direction &&
+          s.entry_price === result.trade?.entry &&
+          s.stop_loss === result.trade?.stop &&
+          s.tp1 === result.trade?.tp1 &&
+          s.tp2 === result.trade?.tp2,
+      );
+
+    if (existing) {
+      alert("Dieses Signal wurde bereits gespeichert.");
+      return;
+    }
+
     const sig: Signal = {
       id: uid(),
       timestamp: result.ts,

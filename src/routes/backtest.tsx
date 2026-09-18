@@ -53,6 +53,7 @@ function BacktestPage() {
         fundingRateAvg: funding,
         rrTp1: 1.5,
         rrTp2: 3,
+    volumeMultiplier: 0.9,
       });
       setRes(r);
     } catch (e) {
@@ -208,6 +209,31 @@ function BacktestPage() {
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {res.audit ? (
+              <div className="tile p-3">
+                <h3 className="text-sm font-semibold">Strategy Audit</h3>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  <div>Decisions evaluated: {res.audit.decisions}</div>
+                  <div>Signals: {res.audit.signals}</div>
+              <div>Avg Win: {res.avgWin.toFixed(2)} $</div>
+              <div>Avg Loss: {res.avgLoss.toFixed(2)} $</div>
+                  <div>Max Consecutive Losses: {res.maxConsecLosses ?? 0}</div>
+                  <div>Trades / Week: {(res.tradesPerWeek ?? 0).toFixed(2)}</div>
+                </div>
+                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">NO-TRADE REASONS</div>
+                  {Object.entries(res.audit.reasons)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([reason, count]) => (
+                      <div key={reason} className="flex items-center justify-between gap-3">
+                        <span>{reason}</span>
+                        <span>{count}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="tile p-3 text-xs text-muted-foreground">
               Live-vs-Backtest: Drift wird signalisiert, sobald deine geschlossenen

@@ -38,6 +38,8 @@ export function useEngine(
 
   const lastNotifiedTs =
     useRef<number>(0);
+  const lastNotifiedFingerprint =
+    useRef<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -106,20 +108,41 @@ export function useEngine(
         const hasTrade =
           result.trade !== undefined;
 
-        const notificationCooldownPassed =
-          result.ts -
-            lastNotifiedTs.current >
-          60_000;
-
         if (
           settings.notifyEnabled &&
           dataHealthy &&
           signalDetected &&
-          hasTrade &&
-          notificationCooldownPassed
+          hasTrade
         ) {
+          const signalFingerprint = [
+            settings.symbol,
+            result.decision,
+            result.trade!.direction,
+            result.trade!.entry,
+            result.trade!.stop,
+            result.trade!.tp1,
+            result.trade!.tp2,
+          ].join("|");
+
+          const isNewSignal =
+            signalFingerprint !==
+            lastNotifiedFingerprint.current;
+          const cooldownPassed =
+            result.ts -
+              lastNotifiedTs.current >
+            60_000;
+
+          if (
+            !isNewSignal ||
+            !cooldownPassed
+          ) {
+            return;
+          }
+
           lastNotifiedTs.current =
             result.ts;
+          lastNotifiedFingerprint.current =
+            signalFingerprint;
 
           const trade =
             result.trade!;

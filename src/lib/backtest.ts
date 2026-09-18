@@ -35,6 +35,12 @@ export interface BacktestTrade {
 }
 
 export interface BacktestResult {
+  audit?: {
+    decisions: number;
+    signals: number;
+    reasons: Record<string, number>;
+  };
+
   trades: BacktestTrade[];
   equity: { time: number; value: number }[];
   finalEquity: number;
@@ -696,6 +702,11 @@ export function runBacktest(
     calmar,
     maxConsecLosses,
     tradesPerWeek,
+    audit: {
+      decisions: auditDecisions,
+      signals: auditSignals,
+      reasons: { ...auditReasons },
+    },
   };
 }
 
