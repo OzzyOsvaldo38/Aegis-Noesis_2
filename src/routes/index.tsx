@@ -86,6 +86,20 @@ function Dashboard({ settings }: { settings: AppSettings }) {
             </div>
           </div>
 
+          <div className="mb-4 rounded-lg border px-4 py-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Data Health</span>
+              <span className="text-sm font-semibold">
+                {result.dataHealth.status}
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {result.dataHealth.checks.find((check) => check.status === "FAIL")?.detail ??
+                result.dataHealth.checks.find((check) => check.status === "WARN")?.detail ??
+                "Marktdaten sind aktuell und valid."}
+            </div>
+          </div>
+
           <ScoreGauge
             score={result.score}
             decision={result.decision}
