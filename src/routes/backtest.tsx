@@ -122,19 +122,7 @@ function BacktestPage() {
             <div className="mt-2 text-xs text-[var(--color-bear)]">{error}</div>
           ) : null}
                       {res.trades?.length ? (
-                    <div className="tile p-3">
-                                      <h3 className="text-sm font-semibold">Trade Outcome Audit</h3>
-                                      <div className="mt-2 text-xs text-muted-foreground">
-                                                          <div>Total Trades: {res.trades.length}</div>
-                                                          <div>TP1: {res.trades.filter((t) => String(t.exit).toUpperCase() === "TP1").length}</div>
-                                                          <div>TP2: {res.trades.filter((t) => String(t.exit).toUpperCase() === "TP2").length}</div>
-                                                          <div>Stop: {res.trades.filter((t) => String(t.exit).toUpperCase().includes("STOP")).length}</div>
-                                                          <div>Long: {res.trades.filter((t) => t.direction === "LONG").length}</div>
-                                                          <div>Short: {res.trades.filter((t) => t.direction === "SHORT").length}</div>
-                                                          <div>Avg R: {(res.trades.reduce((sum, t) => sum + (t.rMultiple ?? 0), 0) / res.trades.length).toFixed(2)}</div>
-                                                        </div>
-                                    </div>
-                  ) : null}
+                   
         </div>
 
         {res ? (
