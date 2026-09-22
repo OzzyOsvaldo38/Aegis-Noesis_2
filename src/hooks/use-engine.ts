@@ -143,6 +143,14 @@ export function useEngine(
             status: outcome,
           });
 
+          const alreadyJournaled = store
+            .getJournal()
+            .some((entry) => entry.signal_id === signal.id);
+
+          if (alreadyJournaled) {
+            continue;
+          }
+
           store.addJournal({
             id: uid(),
             signal_id: signal.id,
