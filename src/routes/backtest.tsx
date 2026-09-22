@@ -10,7 +10,11 @@ import {
 } from "recharts";
 import { AppShell } from "@/components/app-shell";
 import { MetricTile } from "@/components/metric-tile";
-import { runBacktest, fetchHistory, type BacktestResult } from "@/lib/backtest";
+import {
+  runBacktest,
+  fetchHistory,
+  type BacktestResult,
+} from "@/lib/backtest";
 import { fmtPct, fmtUSD } from "@/lib/format";
 import { store } from "@/lib/storage";
 import { Loader2 } from "lucide-react";
@@ -19,7 +23,11 @@ export const Route = createFileRoute("/backtest")({
   head: () => ({
     meta: [
       { title: "Backtest — BTC Engine" },
-      { name: "description", content: "Client-seitiges Backtesting mit Fees, Slippage und Funding." },
+      {
+        name: "description",
+        content:
+          "Client-seitiges Backtesting mit Fees, Slippage und Funding.",
+      },
     ],
   }),
   component: BacktestPage,
@@ -39,11 +47,16 @@ function BacktestPage() {
   const run = async () => {
     setRunning(true);
     setError(null);
+
     try {
       const settings = store.getSettings();
       const user = store.getUser();
       const candles = await fetchHistory(settings.symbol, days);
-      if (candles.length < 250) throw new Error("Zu wenig Daten geladen.");
+
+      if (candles.length < 250) {
+        throw new Error("Zu wenig Daten geladen.");
+      }
+
       const r = runBacktest({
         candles,
         accountSize: user.account_size,
@@ -53,8 +66,9 @@ function BacktestPage() {
         fundingRateAvg: funding,
         rrTp1: 1.5,
         rrTp2: 3,
-    volumeMultiplier: 0.9,
+        volumeMultiplier: 0.9,
       });
+
       setRes(r);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Backtest-Fehler");
@@ -65,7 +79,10 @@ function BacktestPage() {
 
   const equityData = res
     ? res.equity
-        .filter((_, i) => i % Math.max(1, Math.floor(res.equity.length / 200)) === 0)
+        .filter(
+          (_, i) =>
+            i % Math.max(1, Math.floor(res.equity.length / 200)) === 0,
+        )
         .map((p) => ({
           time: new Date(p.time).toLocaleDateString("de-DE", {
             month: "2-digit",
@@ -82,6 +99,7 @@ function BacktestPage() {
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
             Zeitraum
           </div>
+
           <div className="mt-2 flex flex-wrap gap-1.5">
             {PRESETS.map((d) => (
               <button
@@ -100,8 +118,18 @@ function BacktestPage() {
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-            <NumField label="Fee bps" value={feeBps} onChange={setFeeBps} />
-            <NumField label="Slippage bps" value={slipBps} onChange={setSlipBps} />
+            <NumField
+              label="Fee bps"
+              value={feeBps}
+              onChange={setFeeBps}
+            />
+
+            <NumField
+              label="Slippage bps"
+              value={slipBps}
+              onChange={setSlipBps}
+            />
+
             <NumField
               label="Ø Funding (8h)"
               value={funding}
@@ -118,10 +146,12 @@ function BacktestPage() {
             {running ? <Loader2 className="size-4 animate-spin" /> : null}
             {running ? "Läuft…" : "Backtest starten"}
           </button>
+
           {error ? (
-            <div className="mt-2 text-xs text-[var(--color-bear)]">{error}</div>
+            <div className="mt-2 text-xs text-[var(--color-bear)]">
+              {error}
+            </div>
           ) : null}
-                   
         </div>
 
         {res ? (
@@ -132,47 +162,79 @@ function BacktestPage() {
                 tone={res.finalEquity >= 100 ? "bull" : "bear"}
                 value={`${fmtUSD(res.finalEquity)} $`}
               />
-              <MetricTile label="Trades" value={res.trades.length.toString()} />
+
+              <MetricTile
+                label="Trades"
+                value={res.trades.length.toString()}
+              />
+
               <MetricTile
                 label="Win Rate"
                 tone={res.winrate >= 50 ? "bull" : "bear"}
                 value={`${res.winrate.toFixed(1)}%`}
               />
+
               <MetricTile
                 label="Profit Factor"
-                tone={res.profitFactor >= 1.5 ? "bull" : res.profitFactor >= 1 ? "warn" : "bear"}
+                tone={
+                  res.profitFactor >= 1.5
+                    ? "bull"
+                    : res.profitFactor >= 1
+                      ? "warn"
+                      : "bear"
+                }
                 value={
-                  res.profitFactor >= 99 ? "∞" : res.profitFactor.toFixed(2)
+                  res.profitFactor >= 99
+                    ? "∞"
+                    : res.profitFactor.toFixed(2)
                 }
               />
+
               <MetricTile
                 label="Max Drawdown"
                 tone="bear"
                 value={fmtPct(-res.maxDD)}
               />
+
               <MetricTile
                 label="Expectancy"
                 tone={res.expectancy >= 0 ? "bull" : "bear"}
                 value={`${fmtUSD(res.expectancy)} $`}
               />
-              <MetricTile label="Sharpe" value={res.sharpe.toFixed(2)} />
-              <MetricTile label="Sortino" value={res.sortino.toFixed(2)} />
+
+              <MetricTile
+                label="Sharpe"
+                value={res.sharpe.toFixed(2)}
+              />
+
+              <MetricTile
+                label="Sortino"
+                value={res.sortino.toFixed(2)}
+              />
             </div>
 
             <div className="tile p-3">
               <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">
                 Equity-Kurve
               </div>
+
               <div className="mt-2 h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={equityData}>
                     <defs>
-                      <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient
+                        id="eq"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
                         <stop
                           offset="0%"
                           stopColor="var(--color-primary)"
                           stopOpacity={0.5}
                         />
+
                         <stop
                           offset="100%"
                           stopColor="var(--color-primary)"
@@ -180,16 +242,25 @@ function BacktestPage() {
                         />
                       </linearGradient>
                     </defs>
+
                     <XAxis
                       dataKey="time"
-                      tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
+                      tick={{
+                        fontSize: 10,
+                        fill: "var(--color-muted-foreground)",
+                      }}
                       stroke="var(--color-border)"
                     />
+
                     <YAxis
-                      tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
+                      tick={{
+                        fontSize: 10,
+                        fill: "var(--color-muted-foreground)",
+                      }}
                       stroke="var(--color-border)"
                       domain={["auto", "auto"]}
                     />
+
                     <Tooltip
                       contentStyle={{
                         background: "var(--color-surface)",
@@ -197,8 +268,11 @@ function BacktestPage() {
                         borderRadius: 6,
                         fontSize: 12,
                       }}
-                      labelStyle={{ color: "var(--color-muted-foreground)" }}
+                      labelStyle={{
+                        color: "var(--color-muted-foreground)",
+                      }}
                     />
+
                     <Area
                       type="monotone"
                       dataKey="eq"
@@ -214,20 +288,33 @@ function BacktestPage() {
             {res.audit ? (
               <div className="tile p-3">
                 <h3 className="text-sm font-semibold">Strategy Audit</h3>
+
                 <div className="mt-2 text-xs text-muted-foreground">
                   <div>Decisions evaluated: {res.audit.decisions}</div>
                   <div>Signals: {res.audit.signals}</div>
-              <div>Avg Win: {res.avgWin.toFixed(2)} $</div>
-              <div>Avg Loss: {res.avgLoss.toFixed(2)} $</div>
-                  <div>Max Consecutive Losses: {res.maxConsecLosses ?? 0}</div>
-                  <div>Trades / Week: {(res.tradesPerWeek ?? 0).toFixed(2)}</div>
+                  <div>Avg Win: {res.avgWin.toFixed(2)} $</div>
+                  <div>Avg Loss: {res.avgLoss.toFixed(2)} $</div>
+                  <div>
+                    Max Consecutive Losses: {res.maxConsecLosses ?? 0}
+                  </div>
+                  <div>
+                    Trades / Week:{" "}
+                    {(res.tradesPerWeek ?? 0).toFixed(2)}
+                  </div>
                 </div>
+
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                  <div className="font-medium text-foreground">NO-TRADE REASONS</div>
+                  <div className="font-medium text-foreground">
+                    NO-TRADE REASONS
+                  </div>
+
                   {Object.entries(res.audit.reasons)
                     .sort((a, b) => b[1] - a[1])
                     .map(([reason, count]) => (
-                      <div key={reason} className="flex items-center justify-between gap-3">
+                      <div
+                        key={reason}
+                        className="flex items-center justify-between gap-3"
+                      >
                         <span>{reason}</span>
                         <span>{count}</span>
                       </div>
@@ -237,10 +324,13 @@ function BacktestPage() {
             ) : null}
 
             <div className="tile p-3 text-xs text-muted-foreground">
-              Live-vs-Backtest: Drift wird signalisiert, sobald deine geschlossenen
-              Live-Trades um &gt;30% von der Backtest-Win-Rate abweichen
-              (Overfitting-Warnung). Vergleichswert Backtest WR{" "}
-              <span className="text-foreground">{res.winrate.toFixed(1)}%</span>.
+              Live-vs-Backtest: Drift wird signalisiert, sobald deine
+              geschlossenen Live-Trades um &gt;30% von der Backtest-Win-Rate
+              abweichen (Overfitting-Warnung). Vergleichswert Backtest WR{" "}
+              <span className="text-foreground">
+                {res.winrate.toFixed(1)}%
+              </span>
+              .
             </div>
           </>
         ) : null}
@@ -265,6 +355,7 @@ function NumField({
       <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
+
       <input
         type="number"
         step={step}
