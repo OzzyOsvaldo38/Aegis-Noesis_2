@@ -55,6 +55,12 @@ function Dashboard({ settings }: { settings: AppSettings }) {
               ? `${now - lastUpdate < 45_000 ? "LIVE" : now - lastUpdate < 120_000 ? "STALE" : "OFFLINE"} · ${fmtTime(lastUpdate)}`
               : "OFFLINE · —"}
           </span>
+          {lastUpdate && now - lastUpdate >= 120_000 && (
+            <div className="text-xs text-muted-foreground">
+              Forward-Test pausiert: Engine seit über 2 Minuten ohne Update.
+              Chromebook, Browser oder Workspace prüfen.
+            </div>
+          )}
         </div>
       }
     >
