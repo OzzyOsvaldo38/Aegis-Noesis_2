@@ -11,6 +11,7 @@ import {
   store,
   type AppSettings,
 } from "@/lib/storage";
+import { evaluatePaperTrade } from "@/lib/paper-trade";
 import type {
   EngineResult,
   MarketSnapshot,
@@ -80,6 +81,24 @@ export function useEngine(
           error: null,
           lastUpdate: Date.now(),
         });
+
+        const persistedSignals = store
+          .getSignals()
+          .filter(
+            (signal) =>
+              signal.symbol === settings.symbol &&
+              (signal.status === "OPEN" || signal.status === "TP1_HIT"),
+          );
+
+        for (const signal of persistedSignals) {
+          const outcome = evaluatePaperTrade(signal, market.price);
+
+          if (outcome !== "NONE") {
+            store.updateSignal(signal.id, {
+              status: outcome,
+            });
+          }
+        }
 
         /*
          * Notifications are allowed only when:
