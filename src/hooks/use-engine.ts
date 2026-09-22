@@ -147,6 +147,29 @@ export function useEngine(
           const trade =
             result.trade!;
 
+          store.addSignal({
+            id: crypto.randomUUID(),
+            timestamp: result.ts,
+            symbol: settings.symbol,
+            direction: trade.direction,
+            entry_price: trade.entry,
+            stop_loss: trade.stop,
+            tp1: trade.tp1,
+            tp2: trade.tp2,
+            signal_score: result.score,
+            liquidity_risk_score: result.liquidityRiskScore,
+            trend_status:
+              result.layers.find((l) => l.name === "Trend")?.detail ?? "",
+            structure_status:
+              result.layers.find((l) => l.name === "Struktur")?.detail ?? "",
+            funding_rate: result.market.fundingRate,
+            open_interest: result.market.openInterest,
+            risk_amount: trade.risk.riskAmount,
+            position_size: trade.risk.positionSize,
+            leverage: trade.risk.leverage,
+            status: "OPEN",
+          });
+
           notify(
             `${settings.symbol} ${result.direction} · Score ${result.score}`,
             `Entry ${trade.entry.toFixed(2)} · SL ${trade.stop.toFixed(2)} · TP1 ${trade.tp1.toFixed(2)}`,
