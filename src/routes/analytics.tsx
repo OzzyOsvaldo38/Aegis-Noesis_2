@@ -18,7 +18,15 @@ export const Route = createFileRoute("/analytics")({
 
 function AnalyticsPage() {
   const [j, setJ] = useState<JournalEntry[]>([]);
-  useEffect(() => setJ(store.getJournal()), []);
+  useEffect(() => {
+    const refresh = () => setJ(store.getJournal());
+
+    refresh();
+
+    const interval = window.setInterval(refresh, 30_000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   const stats = useMemo(() => computeStats(j), [j]);
   const health = useMemo(() => strategyHealth(stats), [stats]);
