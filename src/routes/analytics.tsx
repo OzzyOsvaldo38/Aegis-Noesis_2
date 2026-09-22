@@ -4,7 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { MetricTile } from "@/components/metric-tile";
 import { fmtPct, fmtUSD } from "@/lib/format";
 import { store } from "@/lib/storage";
-import type { JournalEntry } from "@/lib/types";
+import type { JournalEntry, Signal } from "@/lib/types";
 
 export const Route = createFileRoute("/analytics")({
   head: () => ({
@@ -18,8 +18,12 @@ export const Route = createFileRoute("/analytics")({
 
 function AnalyticsPage() {
   const [j, setJ] = useState<JournalEntry[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
   useEffect(() => {
-    const refresh = () => setJ(store.getJournal());
+    const refresh = () => {
+      setJ(store.getJournal());
+      setSignals(store.getSignals());
+    };
 
     refresh();
 
@@ -28,6 +32,36 @@ function AnalyticsPage() {
     return () => window.clearInterval(interval);
   }, []);
 
+  const forwardOpen = signals.filter(
+    (signal) => signal.status === "OPEN" || signal.status === "TP1_HIT",
+  ).length;
+
+  const forwardCompleted = signals.filter(
+    (signal) =>
+      signal.status === "TP2_HIT" ||
+      signal.status === "STOPPED" ||
+      signal.status === "CANCELLED" ||
+      signal.status === "EXPIRED" ||
+      signal.status === "INVALIDATED",
+  ).length;
+
+  const forwardTp1 = signals.filter(
+    (signal) => signal.status === "TP1_HIT",
+  ).length;
+
+  const forwardTp2 = signals.filter(
+    (signal) => signal.status === "TP2_HIT",
+  ).length;
+
+  const forwardStopped = signals.filter(
+    (signal) => signal.status === "STOPPED",
+  ).length;
+
+  const forwardWinrate =
+    forwardCompleted > 0
+      ? ((forwardTp1 + forwardTp2) / forwardCompleted) * 100
+      : 0;
+
   const stats = useMemo(() => computeStats(j), [j]);
   const health = useMemo(() => strategyHealth(stats), [stats]);
 
@@ -35,6 +69,26 @@ function AnalyticsPage() {
     <AppShell title="Analyse">
       <div className="space-y-3">
         <HealthCard score={health.score} label={health.label} tone={health.tone} />
+        <div className="tile p-3">
+          <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+            Forward Audit
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <MetricTile label="Signals" value={signals.length.toString()} />
+            <MetricTile label="Open" value={forwardOpen.toString()} />
+            <MetricTile
+              label="Completed"
+              value={forwardCompleted.toString()}
+            />
+            <MetricTile label="TP1" value={forwardTp1.toString()} />
+            <MetricTile label="TP2" value={forwardTp2.toString()} />
+            <MetricTile label="STOP" value={forwardStopped.toString()} />
+            <MetricTile
+              label="Forward Winrate"
+              value={`${forwardWinrate.toFixed(1)}%`}
+            />
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <MetricTile label="Trades" value={stats.count.toString()} />
           <MetricTile
