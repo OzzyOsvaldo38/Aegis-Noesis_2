@@ -10,6 +10,7 @@ import { notify } from "@/lib/notifications";
 import {
   store,
   type AppSettings,
+  uid,
 } from "@/lib/storage";
 import { evaluatePaperTrade } from "@/lib/paper-trade";
 import type {
@@ -93,11 +94,66 @@ export function useEngine(
         for (const signal of persistedSignals) {
           const outcome = evaluatePaperTrade(signal, market.price);
 
-          if (outcome !== "NONE") {
-            store.updateSignal(signal.id, {
-              status: outcome,
-            });
+          if (outcome === "NONE") {
+            continue;
           }
+
+          if (outcome === "TP1_HIT") {
+            store.updateSignal(signal.id, {
+              status: "TP1_HIT",
+            });
+            continue;
+          }
+
+          const directionMultiplier =
+            signal.direction === "LONG" ? 1 : -1;
+          const positionSize = signal.position_size;
+          const riskAmount = signal.risk_amount;
+
+          const exitPrice =
+            outcome === "TP2_HIT"
+              ? signal.tp2
+              : signal.status === "TP1_HIT"
+                ? signal.entry_price
+                : signal.stop_loss;
+
+          const firstLegPnl =
+            signal.status === "TP1_HIT"
+              ? (signal.tp1 - signal.entry_price) *
+                directionMultiplier *
+                positionSize *
+                0.5
+              : 0;
+
+          const finalLegPnl =
+            signal.status === "TP1_HIT"
+              ? (exitPrice - signal.entry_price) *
+                directionMultiplier *
+                positionSize *
+                0.5
+              : (exitPrice - signal.entry_price) *
+                directionMultiplier *
+                positionSize;
+
+          const profitLoss = firstLegPnl + finalLegPnl;
+          const rMultiple =
+            riskAmount > 0 ? profitLoss / riskAmount : 0;
+
+          store.updateSignal(signal.id, {
+            status: outcome,
+          });
+
+          store.addJournal({
+            id: uid(),
+            signal_id: signal.id,
+            entry: signal.entry_price,
+            exit: exitPrice,
+            profit_loss: profitLoss,
+            r_multiple: rMultiple,
+            duration: Date.now() - signal.timestamp,
+            notes: "",
+            created_at: Date.now(),
+          });
         }
 
         /*
