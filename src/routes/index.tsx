@@ -30,6 +30,15 @@ return <Dashboard settings={settings} />;
 
 function Dashboard({ settings }: { settings: AppSettings }) {
   const { result, loading, error, lastUpdate } = useEngine(settings);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1_000);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   return (
     <AppShell
@@ -41,7 +50,11 @@ function Dashboard({ settings }: { settings: AppSettings }) {
           ) : (
             <span className="size-1.5 rounded-full bg-[var(--color-bull)]" />
           )}
-          <span className="num">{lastUpdate ? fmtTime(lastUpdate) : "—"}</span>
+          <span className="num">
+            {lastUpdate
+              ? `${now - lastUpdate < 45_000 ? "LIVE" : now - lastUpdate < 120_000 ? "STALE" : "OFFLINE"} · ${fmtTime(lastUpdate)}`
+              : "OFFLINE · —"}
+          </span>
         </div>
       }
     >
