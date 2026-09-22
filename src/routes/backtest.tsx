@@ -121,7 +121,6 @@ function BacktestPage() {
           {error ? (
             <div className="mt-2 text-xs text-[var(--color-bear)]">{error}</div>
           ) : null}
-                      {res.trades?.length ? (
                    
         </div>
 
