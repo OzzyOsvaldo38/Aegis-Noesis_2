@@ -203,6 +203,20 @@ function BacktestPage() {
               />
 
               <MetricTile
+                label="Ø R-Multiple"
+                value={
+                  res.trades.length
+                    ? (
+                        res.trades.reduce(
+                          (sum, trade) => sum + trade.rMultiple,
+                          0,
+                        ) / res.trades.length
+                      ).toFixed(2) + " R"
+                    : "0.00 R"
+                }
+              />
+
+              <MetricTile
                 label="Sharpe"
                 value={res.sharpe.toFixed(2)}
               />
@@ -212,6 +226,92 @@ function BacktestPage() {
                 value={res.sortino.toFixed(2)}
               />
             </div>
+
+            <section className="grid gap-4 md:grid-cols-3">
+              {(["TP1", "TP2", "STOP"] as const).map((outcome) => {
+                const trades = res.trades.filter(
+                  (trade) => trade.outcome === outcome,
+                );
+                const avgR = trades.length
+                  ? trades.reduce(
+                      (sum, trade) => sum + trade.rMultiple,
+                      0,
+                    ) / trades.length
+                  : 0;
+                const totalR = trades.reduce(
+                  (sum, trade) => sum + trade.rMultiple,
+                  0,
+                );
+                const avgPnl = trades.length
+                  ? trades.reduce((sum, trade) => sum + trade.pnl, 0) /
+                    trades.length
+                  : 0;
+
+                return (
+                  <div
+                    key={outcome}
+                    className="rounded-lg border p-4"
+                  >
+                    <div className="font-semibold">{outcome}</div>
+                    <div className="mt-2 text-sm">
+                      Trades: {trades.length}
+                    </div>
+                    <div className="text-sm">
+                      Ø R: {avgR.toFixed(2)} R
+                    </div>
+                    <div className="text-sm">
+                      Gesamt: {totalR.toFixed(2)} R
+                    </div>
+                    <div className="text-sm">
+                      Ø PnL: {avgPnl.toFixed(2)} $
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+
+            <section className="grid gap-4 md:grid-cols-2">
+              {(["LONG", "SHORT"] as const).map((direction) => (
+                <div
+                  key={direction}
+                  className="rounded-lg border p-4"
+                >
+                  <div className="font-semibold">
+                    {direction} × OUTCOME
+                  </div>
+
+                  {(["TP1", "TP2", "STOP"] as const).map(
+                    (outcome) => {
+                      const trades = res.trades.filter(
+                        (trade) =>
+                          trade.direction === direction &&
+                          trade.outcome === outcome,
+                      );
+                      const totalR = trades.reduce(
+                        (sum, trade) => sum + trade.rMultiple,
+                        0,
+                      );
+                      const avgR = trades.length
+                        ? totalR / trades.length
+                        : 0;
+
+                      return (
+                        <div
+                          key={outcome}
+                          className="mt-2 flex items-center justify-between text-sm"
+                        >
+                          <span>{outcome}</span>
+                          <span>
+                            {trades.length} Trades · {avgR.toFixed(2)} R ·{" "}
+                            {totalR.toFixed(2)} R
+                          </span>
+                        </div>
+                      );
+                    },
+                  )}
+                </div>
+              ))}
+            </section>
 
             <div className="tile p-3">
               <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">
