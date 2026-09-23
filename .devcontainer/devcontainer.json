@@ -1,5 +1,5 @@
 {
   "name": "Aegis-Noesis",
   "forwardPorts": [8080],
-  "postStartCommand": "pkill -f '/workspaces/Aegis-Noesis_2/node_modules/.bin/vite' 2>/dev/null || true; nohup npm run dev -- --host 0.0.0.0 > /tmp/aegis-vite.log 2>&1 &"
+  "postAttachCommand": "bash .devcontainer/start-aegis.sh"
 }
