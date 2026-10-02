@@ -132,6 +132,7 @@ export interface LayerResult {
   name: string;
   status: LayerStatus;
   detail: string;
+  metrics?: Record<string, number>;
 }
 
 export interface RiskPlan {

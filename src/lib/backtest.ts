@@ -32,9 +32,43 @@ export interface BacktestTrade {
   outcome: "TP1" | "TP2" | "STOP";
   pnl: number;
   rMultiple: number;
+  audit?: {
+    layers: {
+      name: string;
+      status: string;
+      detail?: string;
+      metrics?: Record<string, number>;
+    }[];
+  };
+}
+
+export interface EntryBucketAudit {
+  dimension: "EMA20" | "EMA50" | "Body/Range" | "Volume";
+  bucket: string;
+  trades: number;
+  tp1: number;
+  tp2: number;
+  stop: number;
+  winrate: number;
+  avgR: number;
+}
+
+export interface EntryBucketDirectionAudit {
+  dimension: EntryBucketAudit["dimension"];
+  bucket: string;
+  direction: "LONG" | "SHORT";
+  trades: number;
+  tp1: number;
+  tp2: number;
+  stop: number;
+  winrate: number;
+  avgR: number;
 }
 
 export interface BacktestResult {
+  entryBucketAudit: EntryBucketAudit[];
+  entryBucketDirectionAudit: EntryBucketDirectionAudit[];
+
   audit?: {
     decisions: number;
     signals: number;
@@ -107,6 +141,7 @@ interface OpenPosition {
   openIdx: number;
   realizedPnl: number;
   lastExit: number;
+  audit?: BacktestTrade["audit"];
 }
 
 export function runBacktest(
@@ -173,6 +208,7 @@ export function runBacktest(
         riskAmount > 0
           ? position.realizedPnl / riskAmount
           : 0,
+      audit: position.audit,
     });
   }
 
@@ -422,6 +458,9 @@ export function runBacktest(
             openIdx: i,
             realizedPnl: 0,
             lastExit: trade.entry,
+            audit: {
+              layers: result.layers,
+            },
           };
         }
       }
@@ -686,7 +725,287 @@ export function runBacktest(
     );
   }
 
+  const getEntryMetric = (
+    trade: BacktestTrade,
+    key: string,
+  ) =>
+    trade.audit?.layers.find(
+      (layer) => layer.name === "Entry",
+    )?.metrics?.[key] ?? 0;
+
+  const entryBucketAudit: EntryBucketAudit[] = [];
+  const entryBucketDirectionAudit: EntryBucketDirectionAudit[] = [];
+
+  const addBucket = (
+    dimension: EntryBucketAudit["dimension"],
+    bucket: string,
+    bucketTrades: BacktestTrade[],
+  ) => {
+    const tp1 = bucketTrades.filter(
+      (trade) => trade.outcome === "TP1",
+    ).length;
+
+    const tp2 = bucketTrades.filter(
+      (trade) => trade.outcome === "TP2",
+    ).length;
+
+    const stop = bucketTrades.filter(
+      (trade) => trade.outcome === "STOP",
+    ).length;
+
+    entryBucketAudit.push({
+      dimension,
+      bucket,
+      trades: bucketTrades.length,
+      tp1,
+      tp2,
+      stop,
+      winrate:
+        bucketTrades.length > 0
+          ? ((tp1 + tp2) / bucketTrades.length) * 100
+          : 0,
+      avgR:
+        bucketTrades.length > 0
+          ? bucketTrades.reduce(
+              (sum, trade) => sum + trade.rMultiple,
+              0,
+            ) / bucketTrades.length
+          : 0,
+    });
+  };
+
+  const ema20Buckets = [
+    {
+      label: "<0.10%",
+      test: (value: number) => value < 0.10,
+    },
+    {
+      label: "0.10–0.25%",
+      test: (value: number) =>
+        value >= 0.10 && value < 0.25,
+    },
+    {
+      label: "0.25–0.50%",
+      test: (value: number) =>
+        value >= 0.25 && value <= 0.50,
+    },
+    {
+      label: ">0.50%",
+      test: (value: number) => value > 0.50,
+    },
+  ];
+
+  for (const bucket of ema20Buckets) {
+    addBucket(
+      "EMA20",
+      bucket.label,
+      trades.filter((trade) =>
+        bucket.test(
+          getEntryMetric(
+            trade,
+            "ema20DistancePct",
+          ),
+        ),
+      ),
+    );
+  }
+
+  const ema50Buckets = [
+    {
+      label: "<0.10%",
+      test: (value: number) => value < 0.10,
+    },
+    {
+      label: "0.10–0.25%",
+      test: (value: number) =>
+        value >= 0.10 && value < 0.25,
+    },
+    {
+      label: "0.25–0.50%",
+      test: (value: number) =>
+        value >= 0.25 && value <= 0.50,
+    },
+    {
+      label: ">0.50%",
+      test: (value: number) => value > 0.50,
+    },
+  ];
+
+  for (const bucket of ema50Buckets) {
+    addBucket(
+      "EMA50",
+      bucket.label,
+      trades.filter((trade) =>
+        bucket.test(
+          getEntryMetric(
+            trade,
+            "ema50DistancePct",
+          ),
+        ),
+      ),
+    );
+  }
+
+  const bodyBuckets = [
+    {
+      label: "<25%",
+      test: (value: number) => value < 0.25,
+    },
+    {
+      label: "25–50%",
+      test: (value: number) =>
+        value >= 0.25 && value <= 0.50,
+    },
+    {
+      label: "50–75%",
+      test: (value: number) =>
+        value > 0.50 && value <= 0.75,
+    },
+    {
+      label: ">75%",
+      test: (value: number) => value > 0.75,
+    },
+  ];
+
+  for (const bucket of bodyBuckets) {
+    addBucket(
+      "Body/Range",
+      bucket.label,
+      trades.filter((trade) =>
+        bucket.test(
+          getEntryMetric(
+            trade,
+            "bodyRatio",
+          ),
+        ),
+      ),
+    );
+  }
+
+  const volumeBuckets = [
+    {
+      label: "<1.0x",
+      test: (value: number) => value < 1.0,
+    },
+    {
+      label: "1.0–1.25x",
+      test: (value: number) =>
+        value >= 1.0 && value < 1.25,
+    },
+    {
+      label: "1.25–1.5x",
+      test: (value: number) =>
+        value >= 1.25 && value <= 1.5,
+    },
+    {
+      label: ">1.5x",
+      test: (value: number) => value > 1.5,
+    },
+  ];
+
+  for (const bucket of volumeBuckets) {
+    addBucket(
+      "Volume",
+      bucket.label,
+      trades.filter((trade) =>
+        bucket.test(
+          getEntryMetric(
+            trade,
+            "volumeRatio",
+          ),
+        ),
+      ),
+    );
+  }
+
+  const addDirectionBucket = (
+    dimension: EntryBucketAudit["dimension"],
+    bucket: string,
+    bucketTrades: BacktestTrade[],
+  ) => {
+    for (const direction of ["LONG", "SHORT"] as const) {
+      const directionTrades = bucketTrades.filter(
+        (trade) => trade.direction === direction,
+      );
+
+      const tp1 = directionTrades.filter(
+        (trade) => trade.outcome === "TP1",
+      ).length;
+
+      const tp2 = directionTrades.filter(
+        (trade) => trade.outcome === "TP2",
+      ).length;
+
+      const stop = directionTrades.filter(
+        (trade) => trade.outcome === "STOP",
+      ).length;
+
+      entryBucketDirectionAudit.push({
+        dimension,
+        bucket,
+        direction,
+        trades: directionTrades.length,
+        tp1,
+        tp2,
+        stop,
+        winrate:
+          directionTrades.length > 0
+            ? ((tp1 + tp2) / directionTrades.length) * 100
+            : 0,
+        avgR:
+          directionTrades.length > 0
+            ? directionTrades.reduce(
+                (sum, trade) => sum + trade.rMultiple,
+                0,
+              ) / directionTrades.length
+            : 0,
+      });
+    }
+  };
+
+  for (const row of entryBucketAudit) {
+    const bucketTrades = trades.filter((trade) => {
+      const entryMetric = getEntryMetric(
+        trade,
+        row.dimension === "EMA20"
+          ? "ema20DistancePct"
+          : row.dimension === "EMA50"
+            ? "ema50DistancePct"
+            : row.dimension === "Body/Range"
+              ? "bodyRatio"
+              : "volumeRatio",
+      );
+
+      if (row.dimension === "EMA20" || row.dimension === "EMA50") {
+        if (row.bucket === "<0.10%") return entryMetric < 0.10;
+        if (row.bucket === "0.10–0.25%") return entryMetric >= 0.10 && entryMetric < 0.25;
+        if (row.bucket === "0.25–0.50%") return entryMetric >= 0.25 && entryMetric <= 0.50;
+        return entryMetric > 0.50;
+      }
+
+      if (row.dimension === "Body/Range") {
+        if (row.bucket === "<25%") return entryMetric < 0.25;
+        if (row.bucket === "25–50%") return entryMetric >= 0.25 && entryMetric <= 0.50;
+        if (row.bucket === "50–75%") return entryMetric > 0.50 && entryMetric <= 0.75;
+        return entryMetric > 0.75;
+      }
+
+      if (row.bucket === "<1.0x") return entryMetric < 1.0;
+      if (row.bucket === "1.0–1.25x") return entryMetric >= 1.0 && entryMetric < 1.25;
+      if (row.bucket === "1.25–1.5x") return entryMetric >= 1.25 && entryMetric <= 1.5;
+      return entryMetric > 1.5;
+    });
+
+    addDirectionBucket(
+      row.dimension,
+      row.bucket,
+      bucketTrades,
+    );
+  }
+
   return {
+    entryBucketAudit,
+    entryBucketDirectionAudit,
     trades,
     equity: equityCurve,
     finalEquity,

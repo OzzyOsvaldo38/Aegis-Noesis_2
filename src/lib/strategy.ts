@@ -317,6 +317,36 @@ export function decide(
       rsiOkShort;
   }
 
+  const candleRange =
+    lastCandle
+      ? Math.max(0, lastCandle.high - lastCandle.low)
+      : 0;
+
+  const candleBody =
+    lastCandle
+      ? Math.abs(lastCandle.close - lastCandle.open)
+      : 0;
+
+  const entryBodyRatio =
+    candleRange > 0
+      ? candleBody / candleRange
+      : 0;
+
+  const ema20DistancePct =
+    t15.ema20 !== 0
+      ? (Math.abs(lastClose - t15.ema20) / t15.ema20) * 100
+      : 0;
+
+  const ema50DistancePct =
+    t15.ema50 !== 0
+      ? (Math.abs(lastClose - t15.ema50) / t15.ema50) * 100
+      : 0;
+
+  const volumeRatio =
+    volumeAverage > 0
+      ? lastVolume / volumeAverage
+      : 0;
+
   layers.push({
     name: "Entry",
     status:
@@ -328,6 +358,18 @@ export function decide(
     detail: entryOk
       ? "Pullback + Bestätigungskerze + RSI-Zone"
       : "Kein gültiger 15M-Entry",
+    metrics: {
+      rsi: rsi15,
+      ema20DistancePct,
+      ema50DistancePct,
+      candleBody,
+      candleRange,
+      bodyRatio: entryBodyRatio,
+      volumeRatio,
+      pullbackLong: pullbackLong ? 1 : 0,
+      pullbackShort: pullbackShort ? 1 : 0,
+      bullCandle: bullCandle ? 1 : 0,
+    },
   });
 
   if (trendDir !== "NONE" && !entryOk) {

@@ -423,6 +423,114 @@ function BacktestPage() {
               </div>
             ) : null}
 
+            <div className="tile p-3">
+              <h3 className="text-sm font-semibold">
+                Entry Bucket Audit
+              </h3>
+
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="px-2 py-1">Dimension</th>
+                      <th className="px-2 py-1">Bucket</th>
+                      <th className="px-2 py-1 text-right">Trades</th>
+                      <th className="px-2 py-1 text-right">TP1</th>
+                      <th className="px-2 py-1 text-right">TP2</th>
+                      <th className="px-2 py-1 text-right">STOP</th>
+                      <th className="px-2 py-1 text-right">Winrate</th>
+                      <th className="px-2 py-1 text-right">Avg R</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {res.entryBucketAudit.map((row) => (
+                      <tr
+                        key={`${row.dimension}-${row.bucket}`}
+                        className="border-b last:border-0"
+                      >
+                        <td className="px-2 py-1">{row.dimension}</td>
+                        <td className="px-2 py-1">{row.bucket}</td>
+                        <td className="px-2 py-1 text-right">
+                          {row.trades}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.tp1}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.tp2}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.stop}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.winrate.toFixed(1)}%
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.avgR.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="tile p-3">
+              <h3 className="text-sm font-semibold">
+                Entry Bucket × Direction Audit
+              </h3>
+
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="px-2 py-1">Dimension</th>
+                      <th className="px-2 py-1">Bucket</th>
+                      <th className="px-2 py-1">Direction</th>
+                      <th className="px-2 py-1 text-right">Trades</th>
+                      <th className="px-2 py-1 text-right">TP1</th>
+                      <th className="px-2 py-1 text-right">TP2</th>
+                      <th className="px-2 py-1 text-right">STOP</th>
+                      <th className="px-2 py-1 text-right">Winrate</th>
+                      <th className="px-2 py-1 text-right">Avg R</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {res.entryBucketDirectionAudit.map((row) => (
+                      <tr
+                        key={`${row.dimension}-${row.bucket}-${row.direction}`}
+                        className="border-b last:border-0"
+                      >
+                        <td className="px-2 py-1">{row.dimension}</td>
+                        <td className="px-2 py-1">{row.bucket}</td>
+                        <td className="px-2 py-1">{row.direction}</td>
+                        <td className="px-2 py-1 text-right">
+                          {row.trades}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.tp1}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.tp2}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.stop}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.winrate.toFixed(1)}%
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {row.avgR.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             <div className="tile p-3 text-xs text-muted-foreground">
               Live-vs-Backtest: Drift wird signalisiert, sobald deine
               geschlossenen Live-Trades um &gt;30% von der Backtest-Win-Rate
