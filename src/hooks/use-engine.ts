@@ -251,6 +251,7 @@ export function useEngine(
             position_size: trade.risk.positionSize,
             leverage: trade.risk.leverage,
             status: "OPEN",
+            source: "ENGINE",
           });
 
           notify(

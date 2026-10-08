@@ -77,6 +77,7 @@ function Inner({ settings }: { settings: AppSettings }) {
       position_size: result.trade.risk.positionSize,
       leverage: result.trade.risk.leverage,
       status: "OPEN",
+      source: "MANUAL",
     };
 
     store.addSignal(sig);

@@ -78,6 +78,7 @@ export interface Signal {
   position_size: number;
   leverage: number;
   status: SignalStatus;
+  source?: "ENGINE" | "MANUAL";
 }
 
 export interface JournalEntry {
