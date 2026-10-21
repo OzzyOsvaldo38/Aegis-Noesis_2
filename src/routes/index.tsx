@@ -10,22 +10,25 @@ import { store, type AppSettings } from "@/lib/storage";
 import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
-head: () => ({
-meta: [
-{ title: "Live Dashboard — BTC Engine" },
-{ name: "description", content: "Live BTCUSDT Score, Trend, Struktur & Risikoanalyse." },
-{ property: "og:title", content: "Live Dashboard — BTC Engine" },
-{ property: "og:description", content: "Live BTCUSDT Score, Trend, Struktur & Risikoanalyse." },
-],
-}),
-component: Index,
+  head: () => ({
+    meta: [
+      { title: "Live Dashboard — BTC Engine" },
+      { name: "description", content: "Live BTCUSDT Score, Trend, Struktur & Risikoanalyse." },
+      { property: "og:title", content: "Live Dashboard — BTC Engine" },
+      {
+        property: "og:description",
+        content: "Live BTCUSDT Score, Trend, Struktur & Risikoanalyse.",
+      },
+    ],
+  }),
+  component: Index,
 });
 
 function Index() {
-const [settings, setSettings] = useState<AppSettings | null>(null);
-useEffect(() => setSettings(store.getSettings()), []);
-if (!settings) return null;
-return <Dashboard settings={settings} />;
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  useEffect(() => setSettings(store.getSettings()), []);
+  if (!settings) return null;
+  return <Dashboard settings={settings} />;
 }
 
 function Dashboard({ settings }: { settings: AppSettings }) {
@@ -57,8 +60,8 @@ function Dashboard({ settings }: { settings: AppSettings }) {
           </span>
           {lastUpdate && now - lastUpdate >= 120_000 && (
             <div className="text-xs text-muted-foreground">
-              Forward-Test pausiert: Engine seit über 2 Minuten ohne Update.
-              Chromebook, Browser oder Workspace prüfen.
+              Forward-Test pausiert: Engine seit über 2 Minuten ohne Update. Chromebook, Browser
+              oder Workspace prüfen.
             </div>
           )}
         </div>
@@ -84,7 +87,8 @@ function Dashboard({ settings }: { settings: AppSettings }) {
                 {settings.symbol} · Mark Price
               </div>
               <div className="num text-3xl font-bold">
-                {fmtPrice(result.price)} <span className="text-base text-muted-foreground">USDT</span>
+                {fmtPrice(result.price)}{" "}
+                <span className="text-base text-muted-foreground">USDT</span>
               </div>
             </div>
             <div className="text-right">
@@ -108,9 +112,7 @@ function Dashboard({ settings }: { settings: AppSettings }) {
           <div className="mb-4 rounded-lg border px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Data Health</span>
-              <span className="text-sm font-semibold">
-                {result.dataHealth.status}
-              </span>
+              <span className="text-sm font-semibold">{result.dataHealth.status}</span>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {result.dataHealth.checks.find((check) => check.status === "FAIL")?.detail ??
@@ -136,61 +138,81 @@ function Dashboard({ settings }: { settings: AppSettings }) {
           </div>
 
           {/* Trade plan */}
-          {result.trade ? (
-            <div
-              className="tile p-4"
-              style={{
-                borderColor:
-                  result.trade.direction === "LONG"
-                    ? "color-mix(in oklch, var(--color-bull) 40%, transparent)"
-                    : "color-mix(in oklch, var(--color-bear) 40%, transparent)",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                  Trade-Plan
-                </div>
-                <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-                  style={{
-                    background:
-                      result.trade.direction === "LONG"
-                        ? "color-mix(in oklch, var(--color-bull) 22%, transparent)"
-                        : "color-mix(in oklch, var(--color-bear) 22%, transparent)",
-                    color:
-                      result.trade.direction === "LONG"
-                        ? "var(--color-bull)"
-                        : "var(--color-bear)",
-                  }}
-                >
-                  {result.trade.direction}
-                </span>
+          <div
+            className="tile p-4"
+            style={{
+              borderColor: result.trade
+                ? result.trade.direction === "LONG"
+                  ? "color-mix(in oklch, var(--color-bull) 40%, transparent)"
+                  : "color-mix(in oklch, var(--color-bear) 40%, transparent)"
+                : "var(--color-border)",
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                Trade-Plan
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <MetricTile label="Entry" value={fmtPrice(result.trade.entry)} />
-                <MetricTile
-                  label="Stop"
-                  tone="bear"
-                  value={fmtPrice(result.trade.stop)}
-                />
-                <MetricTile
-                  label="TP1"
-                  tone="bull"
-                  value={fmtPrice(result.trade.tp1)}
-                />
-                <MetricTile label="TP2" tone="bull" value={fmtPrice(result.trade.tp2)} />
-                <MetricTile
-                  label="Risk"
-                  value={`${fmtUSD(result.trade.risk.riskAmount)} $`}
-                />
-                <MetricTile
-                  label="Size"
-                  value={`${result.trade.risk.positionSize.toFixed(4)} BTC`}
-                  hint={`${result.trade.risk.leverage}× Hebel`}
-                />
-              </div>
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+                style={{
+                  background: !result.trade
+                    ? "color-mix(in oklch, var(--color-muted-foreground) 18%, transparent)"
+                    : result.trade.direction === "LONG"
+                      ? "color-mix(in oklch, var(--color-bull) 22%, transparent)"
+                      : "color-mix(in oklch, var(--color-bear) 22%, transparent)",
+                  color: !result.trade
+                    ? "var(--color-muted-foreground)"
+                    : result.trade.direction === "LONG"
+                      ? "var(--color-bull)"
+                      : "var(--color-bear)",
+                }}
+              >
+                {result.trade ? result.trade.direction : "NO TRADE"}
+              </span>
             </div>
-          ) : null}
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <MetricTile label="Entry" value={result.trade ? fmtPrice(result.trade.entry) : "—"} />
+              <MetricTile
+                label="Stop"
+                tone="bear"
+                value={result.trade ? fmtPrice(result.trade.stop) : "—"}
+              />
+              <MetricTile
+                label="TP1"
+                tone="bull"
+                value={result.trade ? fmtPrice(result.trade.tp1) : "—"}
+              />
+              <MetricTile
+                label="TP2"
+                tone="bull"
+                value={result.trade ? fmtPrice(result.trade.tp2) : "—"}
+              />
+              <MetricTile
+                label="Risiko"
+                value={result.trade ? `${fmtUSD(result.trade.risk.riskAmount)} $` : "—"}
+                hint="Maximaler Verlust bei Stop-Loss"
+              />
+              <MetricTile
+                label="Chance / Risiko"
+                value="TP1 1 : 1,50 · TP2 1 : 3,00"
+                hint="Wie viel Gewinn pro 1 $ Risiko möglich ist"
+              />
+              <MetricTile
+                label="Break-even"
+                value="TP1 40 % · TP2 25 %"
+                hint="Theoretische Trefferquote, ohne Gebühren & Slippage"
+              />
+              <MetricTile
+                label="Größe"
+                value={result.trade ? `${result.trade.risk.positionSize.toFixed(4)} BTC` : "—"}
+                hint={
+                  result.trade
+                    ? `${result.trade.risk.leverage}× Hebel`
+                    : "Erst bei gültigem Trade berechnet"
+                }
+              />
+            </div>
+          </div>
 
           {/* Market metrics */}
           <div className="grid grid-cols-2 gap-2">
@@ -215,11 +237,7 @@ function Dashboard({ settings }: { settings: AppSettings }) {
             <MetricTile
               label="RSI 14 (15M)"
               tone={
-                result.market.rsi15m > 70
-                  ? "warn"
-                  : result.market.rsi15m < 30
-                    ? "warn"
-                    : "default"
+                result.market.rsi15m > 70 ? "warn" : result.market.rsi15m < 30 ? "warn" : "default"
               }
               value={result.market.rsi15m.toFixed(1)}
             />
