@@ -41,6 +41,39 @@ function SettingsPage() {
     setTimeout(() => setSaved(false), 1500);
   };
 
+  const downloadBackup = () => {
+    try {
+      const backup = {
+        format: "aegis-noesis-backup",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        user: store.getUser(),
+        settings: store.getSettings(),
+        signals: store.getSignals(),
+        journal: store.getJournal(),
+        analytics: store.getAnalytics(),
+      };
+
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `aegis-noesis-backup-${new Date()
+        .toISOString()
+        .slice(0, 10)}.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error("Backup fehlgeschlagen:", error);
+      alert("Backup konnte nicht erstellt werden.");
+    }
+  };
+
   const wipe = () => {
     if (!confirm("Alle Signale, Journal & Analyse löschen?")) return;
     store.setSignals([]);
@@ -148,6 +181,23 @@ function SettingsPage() {
         >
           {saved ? "Gespeichert ✓" : "Speichern"}
         </button>
+
+        <Section title="Datensicherung">
+          <p className="text-xs text-muted-foreground">
+            Sichere deine Signale, dein Journal und deine Einstellungen
+            als JSON-Datei auf deinem Gerät.
+          </p>
+          <button
+            type="button"
+            onClick={downloadBackup}
+            className="w-full rounded-md border border-input bg-background py-2.5 text-sm font-semibold hover:bg-accent"
+          >
+            Backup herunterladen
+          </button>
+          <p className="text-xs text-muted-foreground">
+            Nur manuelle Sicherung. Keine automatische Synchronisierung.
+          </p>
+        </Section>
 
         <button
           onClick={wipe}
