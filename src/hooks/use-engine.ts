@@ -1,22 +1,11 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { fetchSnapshot } from "@/lib/binance";
 import { evaluate } from "@/lib/engine";
 import { notify } from "@/lib/notifications";
-import {
-  store,
-  type AppSettings,
-  uid,
-} from "@/lib/storage";
-import { evaluatePaperTrade } from "@/lib/paper-trade";
-import type {
-  EngineResult,
-  MarketSnapshot,
-} from "@/lib/types";
+import { store, type AppSettings, uid } from "@/lib/storage";
+import { closePaperTrade, evaluatePaperTrade } from "@/lib/paper-trade";
+import type { EngineResult, MarketSnapshot } from "@/lib/types";
 
 interface UseEngineState {
   result: EngineResult | null;
@@ -26,50 +15,34 @@ interface UseEngineState {
   lastUpdate: number;
 }
 
-export function useEngine(
-  settings: AppSettings,
-) {
-  const [state, setState] =
-    useState<UseEngineState>({
-      result: null,
-      market: null,
-      loading: true,
-      error: null,
-      lastUpdate: 0,
-    });
+export function useEngine(settings: AppSettings) {
+  const [state, setState] = useState<UseEngineState>({
+    result: null,
+    market: null,
+    loading: true,
+    error: null,
+    lastUpdate: 0,
+  });
 
-  const lastNotifiedTs =
-    useRef<number>(0);
-  const lastNotifiedFingerprint =
-    useRef<string>("");
+  const lastNotifiedTs = useRef<number>(0);
+  const lastNotifiedFingerprint = useRef<string>("");
 
   useEffect(() => {
     let cancelled = false;
 
-    let timer:
-      | ReturnType<typeof setTimeout>
-      | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const tick = async () => {
       try {
-        const market =
-          await fetchSnapshot(
-            settings.symbol,
-          );
+        const market = await fetchSnapshot(settings.symbol);
 
         if (cancelled) {
           return;
         }
 
-        const user =
-          store.getUser();
+        const user = store.getUser();
 
-        const result =
-          evaluate(
-            market,
-            user,
-            settings,
-          );
+        const result = evaluate(market, user, settings);
 
         if (cancelled) {
           return;
@@ -105,63 +78,7 @@ export function useEngine(
             continue;
           }
 
-          const directionMultiplier =
-            signal.direction === "LONG" ? 1 : -1;
-          const positionSize = signal.position_size;
-          const riskAmount = signal.risk_amount;
-
-          const exitPrice =
-            outcome === "TP2_HIT"
-              ? signal.tp2
-              : signal.status === "TP1_HIT"
-                ? signal.entry_price
-                : signal.stop_loss;
-
-          const firstLegPnl =
-            signal.status === "TP1_HIT"
-              ? (signal.tp1 - signal.entry_price) *
-                directionMultiplier *
-                positionSize *
-                0.5
-              : 0;
-
-          const finalLegPnl =
-            signal.status === "TP1_HIT"
-              ? (exitPrice - signal.entry_price) *
-                directionMultiplier *
-                positionSize *
-                0.5
-              : (exitPrice - signal.entry_price) *
-                directionMultiplier *
-                positionSize;
-
-          const profitLoss = firstLegPnl + finalLegPnl;
-          const rMultiple =
-            riskAmount > 0 ? profitLoss / riskAmount : 0;
-
-          store.updateSignal(signal.id, {
-            status: outcome,
-          });
-
-          const alreadyJournaled = store
-            .getJournal()
-            .some((entry) => entry.signal_id === signal.id);
-
-          if (alreadyJournaled) {
-            continue;
-          }
-
-          store.addJournal({
-            id: uid(),
-            signal_id: signal.id,
-            entry: signal.entry_price,
-            exit: exitPrice,
-            profit_loss: profitLoss,
-            r_multiple: rMultiple,
-            duration: Date.now() - signal.timestamp,
-            notes: "",
-            created_at: Date.now(),
-          });
+          closePaperTrade(store, signal.id, outcome, uid());
         }
 
         /*
@@ -178,25 +95,13 @@ export function useEngine(
          * a signal notification.
          */
 
-        const signalDetected =
-          result.decision ===
-            "SIGNAL" ||
-          result.decision ===
-            "STRONG_SIGNAL";
+        const signalDetected = result.decision === "SIGNAL" || result.decision === "STRONG_SIGNAL";
 
-        const dataHealthy =
-          result.dataHealth.status ===
-          "HEALTHY";
+        const dataHealthy = result.dataHealth.status === "HEALTHY";
 
-        const hasTrade =
-          result.trade !== undefined;
+        const hasTrade = result.trade !== undefined;
 
-        if (
-          settings.notifyEnabled &&
-          dataHealthy &&
-          signalDetected &&
-          hasTrade
-        ) {
+        if (settings.notifyEnabled && dataHealthy && signalDetected && hasTrade) {
           const signalFingerprint = [
             settings.symbol,
             result.decision,
@@ -207,28 +112,17 @@ export function useEngine(
             result.trade!.tp2,
           ].join("|");
 
-          const isNewSignal =
-            signalFingerprint !==
-            lastNotifiedFingerprint.current;
-          const cooldownPassed =
-            result.ts -
-              lastNotifiedTs.current >
-            60_000;
+          const isNewSignal = signalFingerprint !== lastNotifiedFingerprint.current;
+          const cooldownPassed = result.ts - lastNotifiedTs.current > 60_000;
 
-          if (
-            !isNewSignal ||
-            !cooldownPassed
-          ) {
+          if (!isNewSignal || !cooldownPassed) {
             return;
           }
 
-          lastNotifiedTs.current =
-            result.ts;
-          lastNotifiedFingerprint.current =
-            signalFingerprint;
+          lastNotifiedTs.current = result.ts;
+          lastNotifiedFingerprint.current = signalFingerprint;
 
-          const trade =
-            result.trade!;
+          const trade = result.trade!;
 
           store.addSignal({
             id: crypto.randomUUID(),
@@ -241,10 +135,8 @@ export function useEngine(
             tp2: trade.tp2,
             signal_score: result.score,
             liquidity_risk_score: result.liquidityRiskScore,
-            trend_status:
-              result.layers.find((l) => l.name === "Trend")?.detail ?? "",
-            structure_status:
-              result.layers.find((l) => l.name === "Struktur")?.detail ?? "",
+            trend_status: result.layers.find((l) => l.name === "Trend")?.detail ?? "",
+            structure_status: result.layers.find((l) => l.name === "Struktur")?.detail ?? "",
             funding_rate: result.market.fundingRate,
             open_interest: result.market.openInterest,
             risk_amount: trade.risk.riskAmount,
@@ -267,18 +159,11 @@ export function useEngine(
         setState((previous) => ({
           ...previous,
           loading: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Fehler beim Laden der Marktdaten.",
+          error: error instanceof Error ? error.message : "Fehler beim Laden der Marktdaten.",
         }));
       } finally {
         if (!cancelled) {
-          timer =
-            setTimeout(
-              tick,
-              settings.pollMs,
-            );
+          timer = setTimeout(tick, settings.pollMs);
         }
       }
     };
@@ -292,12 +177,7 @@ export function useEngine(
         clearTimeout(timer);
       }
     };
-  }, [
-    settings.symbol,
-    settings.pollMs,
-    settings.notifyEnabled,
-    settings.minScore,
-  ]);
+  }, [settings]);
 
   return state;
 }

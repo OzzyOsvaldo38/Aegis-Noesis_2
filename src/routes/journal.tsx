@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { fmtDate, fmtPrice, fmtUSD } from "@/lib/format";
-import { store } from "@/lib/storage";
+import { closePaperTrade } from "@/lib/paper-trade";
+import { store, uid } from "@/lib/storage";
 import type { Signal, SignalStatus, JournalEntry } from "@/lib/types";
-import { uid } from "@/lib/storage";
 import { Trash2 } from "lucide-react";
 
 export const Route = createFileRoute("/journal")({
@@ -41,31 +41,20 @@ function JournalPage() {
 
   useEffect(reload, []);
 
-  const closeAt = (
-    sig: Signal,
-    status: SignalStatus,
-    exitPrice: number,
-  ) => {
-    const dir = sig.direction === "LONG" ? 1 : -1;
-    const stopDist = Math.abs(sig.entry_price - sig.stop_loss);
-    const grossPerCoin = (exitPrice - sig.entry_price) * dir;
-    const pnl = grossPerCoin * sig.position_size;
-    const r = stopDist > 0 ? grossPerCoin / stopDist : 0;
+  const closeAt = (sig: Signal, status: "TP2_HIT" | "STOPPED") => {
+    if (closePaperTrade(store, sig.id, status, uid())) {
+      reload();
+    }
+  };
 
-    store.updateSignal(sig.id, { status });
+  const markTp1 = (sig: Signal) => {
+    const currentSignal = store.getSignals().find((signal) => signal.id === sig.id);
 
-    store.addJournal({
-      id: uid(),
-      signal_id: sig.id,
-      entry: sig.entry_price,
-      exit: exitPrice,
-      profit_loss: pnl,
-      r_multiple: r,
-      duration: Date.now() - sig.timestamp,
-      notes: "",
-      created_at: Date.now(),
-    });
+    if (!currentSignal || currentSignal.status !== "OPEN") {
+      return;
+    }
 
+    store.updateSignal(sig.id, { status: "TP1_HIT" });
     reload();
   };
 
@@ -99,10 +88,7 @@ function JournalPage() {
                           s.direction === "LONG"
                             ? "color-mix(in oklch, var(--color-bull) 22%, transparent)"
                             : "color-mix(in oklch, var(--color-bear) 22%, transparent)",
-                        color:
-                          s.direction === "LONG"
-                            ? "var(--color-bull)"
-                            : "var(--color-bear)",
+                        color: s.direction === "LONG" ? "var(--color-bull)" : "var(--color-bear)",
                       }}
                     >
                       {s.direction}
@@ -141,10 +127,7 @@ function JournalPage() {
                 <div className="mt-1 grid grid-cols-3 gap-2 text-[11px]">
                   <Field label="Score" value={`${s.signal_score}`} />
                   <Field label="Risk" value={`${fmtUSD(s.risk_amount)} $`} />
-                  <Field
-                    label="Size"
-                    value={`${s.position_size.toFixed(4)}`}
-                  />
+                  <Field label="Size" value={`${s.position_size.toFixed(4)}`} />
                 </div>
 
                 {j ? (
@@ -156,44 +139,45 @@ function JournalPage() {
                     <span
                       className="num font-bold"
                       style={{
-                        color:
-                          j.profit_loss >= 0
-                            ? "var(--color-bull)"
-                            : "var(--color-bear)",
+                        color: j.profit_loss >= 0 ? "var(--color-bull)" : "var(--color-bear)",
                       }}
                     >
                       {j.profit_loss >= 0 ? "+" : ""}
                       {fmtUSD(j.profit_loss)} $
                     </span>
                   </div>
-                ) : s.status === "OPEN" ? (
+                ) : s.status === "OPEN" || s.status === "TP1_HIT" ? (
                   <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                    <CloseBtn
-                      label="TP1 erreicht"
-                      onClick={() => closeAt(s, "TP1_HIT", s.tp1)}
-                      color="var(--color-bull)"
-                    />
+                    {s.status === "OPEN" && (
+                      <CloseBtn
+                        label="TP1 erreicht"
+                        onClick={() => markTp1(s)}
+                        color="var(--color-bull)"
+                      />
+                    )}
 
                     <CloseBtn
                       label="TP2 erreicht"
-                      onClick={() => closeAt(s, "TP2_HIT", s.tp2)}
+                      onClick={() => closeAt(s, "TP2_HIT")}
                       color="var(--color-bull)"
                     />
 
                     <CloseBtn
                       label="SL"
-                      onClick={() => closeAt(s, "STOPPED", s.stop_loss)}
+                      onClick={() => closeAt(s, "STOPPED")}
                       color="var(--color-bear)"
                     />
 
-                    <CloseBtn
-                      label="Cancel"
-                      onClick={() => {
-                        store.updateSignal(s.id, { status: "CANCELLED" });
-                        reload();
-                      }}
-                      color="var(--color-neutral)"
-                    />
+                    {s.status === "OPEN" && (
+                      <CloseBtn
+                        label="Cancel"
+                        onClick={() => {
+                          store.updateSignal(s.id, { status: "CANCELLED" });
+                          reload();
+                        }}
+                        color="var(--color-neutral)"
+                      />
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -208,9 +192,7 @@ function JournalPage() {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-muted/30 px-2 py-1">
-      <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
+      <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="num font-semibold">{value}</div>
     </div>
   );
