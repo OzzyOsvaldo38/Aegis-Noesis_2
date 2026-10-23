@@ -29,12 +29,13 @@ export function useEngine(settings: AppSettings) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const tick = async () => {
       try {
-        const market = await fetchSnapshot(settings.symbol);
+        const market = await fetchSnapshot(settings.symbol, controller.signal);
 
         if (cancelled) {
           return;
@@ -172,6 +173,7 @@ export function useEngine(settings: AppSettings) {
 
     return () => {
       cancelled = true;
+      controller.abort();
 
       if (timer !== null) {
         clearTimeout(timer);
